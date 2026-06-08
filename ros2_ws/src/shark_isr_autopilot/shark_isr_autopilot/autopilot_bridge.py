@@ -1,0 +1,450 @@
+"""
+autopilot_bridge.py — The ONLY ROS 2 node that talks to PX4.
+
+Responsibilities (ADR-002, ADR-003, ADR-007, ADR-008):
+  - Subscribe to PX4 uXRCE-DDS topics and re-publish unified VehicleState
+    (with NED/FRD → ENU/FLU frame conversion).
+  - Receive GuidanceSetpoint and forward as PX4 OffboardControlMode +
+    TrajectorySetpoint.
+  - Provide AutopilotCommand service for arm/disarm/mode transitions.
+  - Stream OffboardControlMode heartbeat so PX4 stays in Offboard mode.
+  - Never participates in the inner control loop or tilt transition.
+
+Failsafe: if this node dies or the link drops, PX4 detects the lost heartbeat
+and falls back to its own RTL/Hold failsafe — the companion is never
+safety-critical (ADR-003).
+"""
+
+import math
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+
+from geometry_msgs.msg import Point, Quaternion, Vector3
+from std_msgs.msg import Header
+
+# PX4 messages (uXRCE-DDS)
+from px4_msgs.msg import (
+    BatteryStatus,
+    OffboardControlMode,
+    TrajectorySetpoint,
+    VehicleAttitude,
+    VehicleCommand,
+    VehicleGlobalPosition,
+    VehicleLocalPosition,
+    VtolVehicleStatus,
+)
+
+# Shark-ISR interfaces
+from shark_isr_interfaces.msg import GuidanceSetpoint, VehicleState
+from shark_isr_interfaces.srv import AutopilotCommand
+
+from .frame_transforms import (
+    att_ned_frd_to_enu_flu,
+    enu_to_ned,
+    ned_to_enu,
+    quat_to_yaw_ned,
+    yaw_enu_to_ned,
+)
+
+
+# QoS profile that matches PX4's uXRCE-DDS publishers (best-effort, volatile).
+PX4_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+
+
+class AutopilotBridge(Node):
+    """Bridge between ROS 2 guidance stack and PX4 via uXRCE-DDS."""
+
+    def __init__(self) -> None:
+        super().__init__('autopilot_bridge')
+
+        # ── Parameters ───────────────────────────────────────────────────────
+        self.declare_parameter('mav_sys_id', 1)
+        self.declare_parameter('mav_comp_id', 1)
+        self.declare_parameter('offboard_hz', 20.0)
+        self.declare_parameter('vehicle_state_hz', 20.0)
+        self.declare_parameter('setpoint_timeout_s', 2.0)
+
+        self._sys_id = self.get_parameter('mav_sys_id').value
+        self._comp_id = self.get_parameter('mav_comp_id').value
+        _ob_hz = self.get_parameter('offboard_hz').value
+        _vs_hz = self.get_parameter('vehicle_state_hz').value
+        self._setpoint_timeout = self.get_parameter('setpoint_timeout_s').value
+
+        # ── State ────────────────────────────────────────────────────────────
+        self._local_pos: VehicleLocalPosition | None = None
+        self._attitude: VehicleAttitude | None = None
+        self._global_pos: VehicleGlobalPosition | None = None
+        self._battery: BatteryStatus | None = None
+        self._vtol_status: VtolVehicleStatus | None = None
+        self._guidance_setpoint: GuidanceSetpoint | None = None
+        self._last_setpoint_time: rclpy.time.Time | None = None
+        self._offboard_active = False
+
+        # ── PX4 subscribers ──────────────────────────────────────────────────
+        self.create_subscription(
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position',
+            self._cb_local_pos, PX4_QOS)
+        self.create_subscription(
+            VehicleAttitude, '/fmu/out/vehicle_attitude',
+            self._cb_attitude, PX4_QOS)
+        self.create_subscription(
+            VehicleGlobalPosition, '/fmu/out/vehicle_global_position',
+            self._cb_global_pos, PX4_QOS)
+        self.create_subscription(
+            BatteryStatus, '/fmu/out/battery_status',
+            self._cb_battery, PX4_QOS)
+        self.create_subscription(
+            VtolVehicleStatus, '/fmu/out/vtol_vehicle_status',
+            self._cb_vtol, PX4_QOS)
+
+        # ── PX4 publishers ───────────────────────────────────────────────────
+        self._pub_offboard_mode = self.create_publisher(
+            OffboardControlMode, '/fmu/in/offboard_control_mode', PX4_QOS)
+        self._pub_trajectory = self.create_publisher(
+            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', PX4_QOS)
+        self._pub_vehicle_cmd = self.create_publisher(
+            VehicleCommand, '/fmu/in/vehicle_command', PX4_QOS)
+
+        # ── Shark-ISR publishers ─────────────────────────────────────────────
+        self._pub_vehicle_state = self.create_publisher(
+            VehicleState, 'vehicle_state', 10)
+
+        # ── Shark-ISR subscribers ────────────────────────────────────────────
+        self.create_subscription(
+            GuidanceSetpoint, 'guidance_setpoint',
+            self._cb_guidance_setpoint, 10)
+
+        # ── Services ─────────────────────────────────────────────────────────
+        self.create_service(
+            AutopilotCommand, 'autopilot_command', self._srv_autopilot_command)
+
+        # ── Timers ───────────────────────────────────────────────────────────
+        self.create_timer(1.0 / _ob_hz, self._timer_offboard_heartbeat)
+        self.create_timer(1.0 / _vs_hz, self._timer_vehicle_state)
+
+        self.get_logger().info(
+            f'autopilot_bridge started (sys_id={self._sys_id}, '
+            f'offboard_hz={_ob_hz}, state_hz={_vs_hz})')
+
+    # ── PX4 subscriber callbacks ─────────────────────────────────────────────
+
+    def _cb_local_pos(self, msg: VehicleLocalPosition) -> None:
+        self._local_pos = msg
+
+    def _cb_attitude(self, msg: VehicleAttitude) -> None:
+        self._attitude = msg
+
+    def _cb_global_pos(self, msg: VehicleGlobalPosition) -> None:
+        self._global_pos = msg
+
+    def _cb_battery(self, msg: BatteryStatus) -> None:
+        self._battery = msg
+
+    def _cb_vtol(self, msg: VtolVehicleStatus) -> None:
+        self._vtol_status = msg
+
+    # ── Guidance setpoint callback ───────────────────────────────────────────
+
+    def _cb_guidance_setpoint(self, msg: GuidanceSetpoint) -> None:
+        self._guidance_setpoint = msg
+        self._last_setpoint_time = self.get_clock().now()
+
+    # ── 20 Hz offboard heartbeat + setpoint publisher ────────────────────────
+
+    def _timer_offboard_heartbeat(self) -> None:
+        """Publish OffboardControlMode (keeps PX4 in Offboard) and TrajectorySetpoint."""
+        if not self._offboard_active:
+            return
+
+        sp = self._guidance_setpoint
+        stale = self._setpoint_is_stale()
+
+        # Determine control dimensions from setpoint type
+        use_pos = sp is None or stale or sp.setpoint_type in (
+            GuidanceSetpoint.TYPE_POSITION, GuidanceSetpoint.TYPE_ORBIT)
+        use_vel = sp is not None and not stale and sp.setpoint_type == GuidanceSetpoint.TYPE_VELOCITY
+
+        # --- OffboardControlMode heartbeat ---
+        ocm = OffboardControlMode()
+        ocm.timestamp = self._px4_timestamp()
+        ocm.position = use_pos
+        ocm.velocity = use_vel
+        ocm.acceleration = False
+        ocm.attitude = False
+        ocm.body_rate = False
+        self._pub_offboard_mode.publish(ocm)
+
+        # --- TrajectorySetpoint ---
+        tsp = TrajectorySetpoint()
+        tsp.timestamp = self._px4_timestamp()
+
+        if stale or sp is None:
+            # Hold current position: send NaN velocities with position hold
+            tsp.position = [float('nan'), float('nan'), float('nan')]
+            tsp.velocity = [0.0, 0.0, 0.0]
+            tsp.yaw = float('nan')
+            self._pub_trajectory.publish(tsp)
+            return
+
+        if sp.setpoint_type == GuidanceSetpoint.TYPE_POSITION:
+            x_ned, y_ned, z_ned = enu_to_ned(
+                sp.position_enu_m.x,
+                sp.position_enu_m.y,
+                sp.position_enu_m.z,
+            )
+            tsp.position = [x_ned, y_ned, z_ned]
+            tsp.velocity = [float('nan'), float('nan'), float('nan')]
+            tsp.yaw = yaw_enu_to_ned(sp.yaw_rad) if not math.isnan(sp.yaw_rad) else float('nan')
+
+        elif sp.setpoint_type == GuidanceSetpoint.TYPE_VELOCITY:
+            vx_ned, vy_ned, vz_ned = enu_to_ned(
+                sp.velocity_enu_m_s.x,
+                sp.velocity_enu_m_s.y,
+                sp.velocity_enu_m_s.z,
+            )
+            tsp.position = [float('nan'), float('nan'), float('nan')]
+            tsp.velocity = [vx_ned, vy_ned, vz_ned]
+            tsp.yaw = yaw_enu_to_ned(sp.yaw_rad) if not math.isnan(sp.yaw_rad) else float('nan')
+            tsp.yawspeed = -sp.yaw_rate_rad_s if not math.isnan(sp.yaw_rate_rad_s) else float('nan')
+
+        elif sp.setpoint_type == GuidanceSetpoint.TYPE_ORBIT:
+            # Orbit: send MAV_CMD_DO_ORBIT via VehicleCommand (PX4 handles it autonomously).
+            # TrajectorySetpoint still needed to keep offboard heartbeat happy — send hold.
+            tsp.position = [float('nan'), float('nan'), float('nan')]
+            tsp.velocity = [0.0, 0.0, 0.0]
+            tsp.yaw = float('nan')
+            self._send_orbit_command(sp)
+
+        self._pub_trajectory.publish(tsp)
+
+    def _send_orbit_command(self, sp: GuidanceSetpoint) -> None:
+        """Send MAV_CMD_DO_ORBIT (34) to PX4.  Centre in NED, altitude AMSL from local pos."""
+        x_ned, y_ned, _ = enu_to_ned(
+            sp.position_enu_m.x,
+            sp.position_enu_m.y,
+            sp.position_enu_m.z,
+        )
+        alt_amsl = self._global_pos.alt if self._global_pos else 0.0
+        radius = sp.orbit_radius_m
+        direction = -1.0 if sp.orbit_clockwise else 1.0  # PX4: 1=CW, -1=CCW
+
+        cmd = self._make_vehicle_command(
+            command=34,  # MAV_CMD_DO_ORBIT
+            param1=radius,
+            param2=sp.cruise_speed_m_s if sp.cruise_speed_m_s > 0.0 else float('nan'),
+            param3=direction,
+            param4=float('nan'),  # yaw behaviour: NaN = auto
+            param5=x_ned,
+            param6=y_ned,
+            param7=alt_amsl,
+        )
+        self._pub_vehicle_cmd.publish(cmd)
+
+    # ── 20 Hz VehicleState publisher ─────────────────────────────────────────
+
+    def _timer_vehicle_state(self) -> None:
+        """Translate PX4 state topics → VehicleState and publish."""
+        if self._local_pos is None or self._attitude is None:
+            return
+
+        vs = VehicleState()
+        vs.header = Header()
+        vs.header.stamp = self.get_clock().now().to_msg()
+        vs.header.frame_id = 'odom'
+
+        lp = self._local_pos
+        att = self._attitude
+
+        # Position (NED → ENU)
+        if lp.xy_valid:
+            ex, ey, ez = ned_to_enu(lp.x, lp.y, lp.z)
+            vs.position_enu_m = Point(x=ex, y=ey, z=ez)
+            vs.position_h_std_m = math.sqrt(lp.eph ** 2 + lp.eph ** 2) / math.sqrt(2.0)
+        else:
+            vs.position_enu_m = Point()
+            vs.position_h_std_m = float('inf')
+
+        # Velocity (NED → ENU)
+        vex, vey, vez = ned_to_enu(lp.vx, lp.vy, lp.vz)
+        vs.velocity_enu_m_s = Vector3(x=vex, y=vey, z=vez)
+        vs.groundspeed_m_s = math.sqrt(lp.vx ** 2 + lp.vy ** 2)
+
+        # Attitude (NED/FRD quaternion → ENU/FLU)
+        q = att.q  # [w, x, y, z] in PX4
+        w_enu, x_enu, y_enu, z_enu = att_ned_frd_to_enu_flu(q[0], q[1], q[2], q[3])
+        vs.attitude_q = Quaternion(x=x_enu, y=y_enu, z=z_enu, w=w_enu)
+
+        # Global position
+        if self._global_pos is not None:
+            gp = self._global_pos
+            vs.latitude_deg = gp.lat
+            vs.longitude_deg = gp.lon
+            vs.altitude_amsl_m = float(gp.alt)
+
+        # AGL (use altitude_agl from local position if available, else mark invalid)
+        if lp.dist_bottom_valid:
+            vs.agl_m = lp.dist_bottom
+            vs.agl_valid = True
+        elif self._global_pos is not None and lp.z_valid:
+            vs.agl_m = -lp.z  # approx AGL over sea = altitude above home
+            vs.agl_valid = True
+        else:
+            vs.agl_m = 0.0
+            vs.agl_valid = False
+
+        # VTOL phase
+        if self._vtol_status is not None:
+            vs.vtol_phase = self._map_vtol_phase(self._vtol_status.vehicle_vtol_state)
+        else:
+            vs.vtol_phase = VehicleState.VTOL_PHASE_UNDEFINED
+
+        # Battery
+        if self._battery is not None:
+            vs.battery_fraction = float(self._battery.remaining)
+            vs.battery_voltage_v = float(self._battery.voltage_v)
+        else:
+            vs.battery_fraction = -1.0
+            vs.battery_voltage_v = 0.0
+
+        # Status flags
+        vs.armed = lp.ref_alt > 0.0  # crude; replaced when arming state is available
+        vs.offboard_active = self._offboard_active
+        vs.position_valid = lp.xy_valid
+
+        self._pub_vehicle_state.publish(vs)
+
+    # ── AutopilotCommand service ──────────────────────────────────────────────
+
+    def _srv_autopilot_command(
+        self,
+        request: AutopilotCommand.Request,
+        response: AutopilotCommand.Response,
+    ) -> AutopilotCommand.Response:
+        cmd = request.command
+
+        if cmd == AutopilotCommand.Request.CMD_ARM:
+            self._send_arm(arm=True)
+            response.accepted = True
+
+        elif cmd == AutopilotCommand.Request.CMD_DISARM:
+            self._send_arm(arm=False)
+            response.accepted = True
+
+        elif cmd == AutopilotCommand.Request.CMD_OFFBOARD:
+            self._offboard_active = True
+            self._send_mode(px4_custom_mode=6)  # OFFBOARD
+            response.accepted = True
+
+        elif cmd == AutopilotCommand.Request.CMD_HOLD:
+            self._offboard_active = False
+            self._send_mode(px4_custom_mode=3)  # HOLD (Position)
+            response.accepted = True
+
+        elif cmd == AutopilotCommand.Request.CMD_RTL:
+            self._offboard_active = False
+            self._send_mode(px4_custom_mode=5)  # RTL
+            response.accepted = True
+
+        elif cmd == AutopilotCommand.Request.CMD_LAND:
+            self._offboard_active = False
+            self._send_mode(px4_custom_mode=9)  # LAND
+            response.accepted = True
+
+        else:
+            response.accepted = False
+            response.reason = f'Unknown command: {cmd}'
+            return response
+
+        self.get_logger().info(f'AutopilotCommand {cmd} sent (accepted)')
+        return response
+
+    # ── VehicleCommand helpers ────────────────────────────────────────────────
+
+    def _send_arm(self, arm: bool) -> None:
+        cmd = self._make_vehicle_command(
+            command=400,    # MAV_CMD_COMPONENT_ARM_DISARM
+            param1=1.0 if arm else 0.0,
+            param2=21196.0 if arm else 0.0,  # force arm override
+        )
+        self._pub_vehicle_cmd.publish(cmd)
+        self.get_logger().info(f'Sent ARM={arm}')
+
+    def _send_mode(self, px4_custom_mode: int) -> None:
+        """Send VEHICLE_CMD_DO_SET_MODE with PX4 custom main mode."""
+        cmd = self._make_vehicle_command(
+            command=176,    # MAV_CMD_DO_SET_MODE
+            param1=1.0,     # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+            param2=float(px4_custom_mode),
+        )
+        self._pub_vehicle_cmd.publish(cmd)
+
+    def _make_vehicle_command(
+        self,
+        command: int,
+        param1: float = float('nan'),
+        param2: float = float('nan'),
+        param3: float = float('nan'),
+        param4: float = float('nan'),
+        param5: float = float('nan'),
+        param6: float = float('nan'),
+        param7: float = float('nan'),
+    ) -> VehicleCommand:
+        vc = VehicleCommand()
+        vc.timestamp = self._px4_timestamp()
+        vc.command = command
+        vc.param1 = param1
+        vc.param2 = param2
+        vc.param3 = param3
+        vc.param4 = param4
+        vc.param5 = param5
+        vc.param6 = param6
+        vc.param7 = param7
+        vc.target_system = self._sys_id
+        vc.target_component = self._comp_id
+        vc.source_system = self._sys_id
+        vc.source_component = self._comp_id
+        vc.from_external = True
+        return vc
+
+    # ── Utilities ────────────────────────────────────────────────────────────
+
+    def _px4_timestamp(self) -> int:
+        """PX4 timestamp in microseconds."""
+        return self.get_clock().now().nanoseconds // 1000
+
+    def _setpoint_is_stale(self) -> bool:
+        if self._last_setpoint_time is None:
+            return True
+        elapsed = (self.get_clock().now() - self._last_setpoint_time).nanoseconds * 1e-9
+        return elapsed > self._setpoint_timeout
+
+    @staticmethod
+    def _map_vtol_phase(px4_state: int) -> int:
+        """Map PX4 vtol_vehicle_state to VehicleState VTOL_PHASE_* constant."""
+        # PX4 VtolVehicleStatus.vehicle_vtol_state values (PX4 v1.16):
+        # 0=UNDEFINED, 1=TRANSITION_TO_FW, 2=TRANSITION_TO_MC, 3=MC, 4=FW
+        _map = {
+            0: VehicleState.VTOL_PHASE_UNDEFINED,
+            1: VehicleState.VTOL_PHASE_TRANS_TO_FW,
+            2: VehicleState.VTOL_PHASE_TRANS_TO_MC,
+            3: VehicleState.VTOL_PHASE_HOVER,
+            4: VehicleState.VTOL_PHASE_FIXED_WING,
+        }
+        return _map.get(px4_state, VehicleState.VTOL_PHASE_UNDEFINED)
+
+
+def main(args=None) -> None:
+    rclpy.init(args=args)
+    node = AutopilotBridge()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

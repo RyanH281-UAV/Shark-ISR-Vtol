@@ -1,0 +1,37 @@
+# SetGuidanceMode.srv — Mission commands the guidance layer to change mode
+#
+# Service server: shark_isr_guidance
+# Client:         shark_isr_mission
+#
+# Mode-specific parameter sections: populate only the fields relevant to the
+# requested mode; guidance ignores fields that do not apply.
+#
+# Coordinate frames — all ENU, origin = home at arm [m].
+
+# ── Mode constants ────────────────────────────────────────────────────────────
+uint8 MODE_IDLE    = 0          # stop active guidance; hold position
+uint8 MODE_TRANSIT = 1          # fly to transit_target_enu_m
+uint8 MODE_SEARCH  = 2          # execute search pattern inside the defined area
+uint8 MODE_ORBIT   = 3          # orbit a detected target
+uint8 MODE_RETURN  = 4          # fly home and prepare to land
+
+uint8 mode
+
+# ── MODE_TRANSIT parameters ───────────────────────────────────────────────────
+geometry_msgs/Point transit_target_enu_m    # x=East [m], y=North [m], z=Up [m]
+
+# ── MODE_SEARCH parameters ────────────────────────────────────────────────────
+geometry_msgs/Point search_centre_enu_m     # ENU centre of search area
+float32 search_radius_m                     # [m] search area radius
+float32 search_alt_enu_z_m                  # [m] z (Up) altitude for search leg
+
+# ── MODE_ORBIT parameters ─────────────────────────────────────────────────────
+geometry_msgs/Point orbit_centre_enu_m      # ENU point to orbit (typically a detection)
+float32 orbit_radius_m                      # [m] orbit radius
+bool    orbit_clockwise                     # true = CW from above; false (default) = CCW
+
+---
+
+# ── Response ──────────────────────────────────────────────────────────────────
+bool   accepted                 # true if mode change was valid and applied
+string reason                   # human-readable rejection reason (empty if accepted)

@@ -1,0 +1,9 @@
+# Training pipeline dependencies
+# Install with: pip install -r requirements.txt
+
+roboflow>=1.1.0          # dataset download from Roboflow Universe
+ultralytics>=8.1.0       # YOLOv8 training + export
+pyyaml>=6.0              # YAML parsing for data.yaml files
+onnx>=1.14.0             # ONNX format (for export step)
+onnxsim>=0.4.33          # ONNX simplifier (cleaner graph for Hailo DFC)
+opencv-python>=4.8.0     # image operations in merge script

@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>shark_isr_telemetry</name>
+  <version>0.1.0</version>
+  <description>Structured logging of flight + detections + decisions; operator summary relay.</description>
+  <maintainer email="ryanhughes281@yahoo.com">Ryan Hughes</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>shark_isr_interfaces</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_pep8</test_depend>
+  <test_depend>pytest</test_depend>
+</package>

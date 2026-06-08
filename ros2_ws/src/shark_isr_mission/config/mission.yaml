@@ -1,0 +1,14 @@
+mission_node:
+  ros__parameters:
+    # State machine monitor rate [Hz].
+    update_hz: 2.0
+
+    # Battery fraction below which the mission automatically triggers return [0–1].
+    # PX4's own failsafe still applies; this is an application-level early trigger.
+    low_battery_threshold: 0.20
+
+    # Seconds to wait for vehicle to arm before aborting the start sequence.
+    arm_timeout_s: 10.0
+
+    # Seconds to wait for transit to complete before starting search anyway.
+    transit_timeout_s: 300.0

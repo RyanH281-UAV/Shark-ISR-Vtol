@@ -1,0 +1,16 @@
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+ros2_ws/src/px4_msgs/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+training/datasets/
+*.pt
+*.onnx
+*.hef
+*.engine
+ruvector.db
+.claude-flow/
+.DS_Store

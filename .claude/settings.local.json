@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-flow__memory_store",
+      "mcp__claude-flow__memory_retrieve",
+      "mcp__claude-flow__neural_status",
+      "mcp__claude-flow__swarm_init",
+      "mcp__claude-flow__memory_search"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ]
+}

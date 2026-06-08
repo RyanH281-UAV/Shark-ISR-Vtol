@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>shark_isr_autopilot</name>
+  <version>0.1.0</version>
+  <description>
+    The ONLY package talking to the autopilot. PX4 via uXRCE-DDS + px4_msgs:
+    arm/disarm, mode transitions, offboard setpoints, VehicleState publisher.
+    MAVLink kept behind the same interface as a fallback (ADR-002).
+  </description>
+  <maintainer email="ryanhughes281@yahoo.com">Ryan Hughes</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>px4_msgs</depend>
+  <depend>shark_isr_interfaces</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+</package>

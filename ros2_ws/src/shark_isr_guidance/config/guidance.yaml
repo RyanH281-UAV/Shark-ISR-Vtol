@@ -1,0 +1,33 @@
+guidance_node:
+  ros__parameters:
+    # Guidance loop rate [Hz] — how often setpoints are sent to autopilot.
+    update_hz: 5.0
+
+    # SearchState publish rate [Hz] — consumed by mission and telemetry.
+    state_hz: 2.0
+
+    # Sensor swath width used for boustrophedon row spacing [m].
+    # Camera Module 3 at 50 m AGL with ~70° HFOV ≈ 70 m swath.
+    # 60 m gives ~15% overlap.
+    strip_width_m: 60.0
+
+    # Horizontal distance from waypoint at which arrival is declared [m].
+    arrival_threshold_m: 15.0
+
+    # Minimum Detection.confidence to trigger orbit-on-detect.
+    detection_confidence_threshold: 0.70
+
+    # Orbit radius when tracking a detection [m].
+    orbit_radius_m: 50.0
+
+    # Sensor footprint half-width for Bayesian null-observation updates [m].
+    footprint_radius_m: 35.0
+
+    # Probability of detecting a shark when it is inside the sensor footprint.
+    p_detection: 0.85
+
+    # Standard deviation of detection position uncertainty for Gaussian map update [m].
+    detection_sigma_m: 25.0
+
+    # Return-to-home altitude in ENU z [m].
+    return_home_alt_m: 30.0

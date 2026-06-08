@@ -1,0 +1,15 @@
+autopilot_bridge:
+  ros__parameters:
+    # PX4 system / component ID — must match MAV_SYS_ID in PX4 params (default 1).
+    mav_sys_id: 1
+    mav_comp_id: 1
+
+    # Rate at which OffboardControlMode heartbeat and TrajectorySetpoint are published [Hz].
+    # PX4 requires ≥2 Hz to stay in Offboard mode; 20 Hz gives good response.
+    offboard_hz: 20.0
+
+    # Rate at which VehicleState is published to the rest of the stack [Hz].
+    vehicle_state_hz: 20.0
+
+    # If no GuidanceSetpoint is received for this many seconds, hold current position.
+    setpoint_timeout_s: 2.0
