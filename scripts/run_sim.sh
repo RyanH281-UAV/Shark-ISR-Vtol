@@ -8,16 +8,18 @@
 #
 #  Prerequisites (one-time setup — see sim/README.md):
 #    sudo snap install micro-xrce-dds-agent --edge
+#    ln -sf ~/projects/shark-isr-vtol/sim/worlds/shark_isr_coastal.sdf \
+#           ~/PX4-Autopilot/Tools/simulation/gz/worlds/shark_isr_coastal.sdf
 #    source ros2_ws/install/setup.bash   (after colcon build with px4_msgs)
 #
 #  Usage:
 #    Terminal 1:  ./scripts/run_sim.sh
-#    Terminal 2:  source ros2_ws/install/setup.bash && ros2 topic list
+#    Terminal 2:  source ros2_ws/install/setup.bash && ros2 topic list | grep fmu
 #
-#  What this starts:
-#    1. MicroXRCE-DDS agent  (UDP4 :8888 — bridges PX4 uORB ↔ ROS 2 DDS)
-#    2. PX4 SITL             (airframe 4020 gz_tiltrotor + shark coastal world)
-#       Gazebo opens automatically; the tiltrotor spawns over Cottesloe Beach, Perth WA.
+#  What this starts (in order — Gazebo must be ready before PX4 attaches):
+#    1. Gazebo Harmonic (gz sim server, shark_isr_coastal world, headless-safe)
+#    2. MicroXRCE-DDS agent  (UDP4 :8888 — bridges PX4 uORB ↔ ROS 2 DDS)
+#    3. PX4 SITL             (airframe 4020 gz_tiltrotor, attaches to running gz)
 #
 #  To stop: Ctrl+C (traps SIGINT and kills all children)
 # =============================================================================
@@ -28,10 +30,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WORLDS_DIR="${PROJECT_DIR}/sim/worlds"
 PX4_DIR="${HOME}/PX4-Autopilot"
+PX4_GZ_WORLDS="${PX4_DIR}/Tools/simulation/gz/worlds"
 
 # ── Sanity checks ────────────────────────────────────────────────────────────
 if [[ ! -f "${PX4_DIR}/build/px4_sitl_default/bin/px4" ]]; then
-    echo "[shark-isr] ERROR: PX4 SITL binary not found at ${PX4_DIR}/build/px4_sitl_default/bin/px4"
+    echo "[shark-isr] ERROR: PX4 SITL binary not found."
     echo "            Run: cd ${PX4_DIR} && make px4_sitl_default"
     exit 1
 fi
@@ -41,13 +44,19 @@ if [[ ! -f "${WORLDS_DIR}/shark_isr_coastal.sdf" ]]; then
     exit 1
 fi
 
+if [[ ! -e "${PX4_GZ_WORLDS}/shark_isr_coastal.sdf" ]]; then
+    echo "[shark-isr] ERROR: World not symlinked into PX4 worlds dir."
+    echo "            Run: ln -sf ${WORLDS_DIR}/shark_isr_coastal.sdf \\"
+    echo "                        ${PX4_GZ_WORLDS}/shark_isr_coastal.sdf"
+    exit 1
+fi
+
 if ! command -v micro-xrce-dds-agent &>/dev/null && ! command -v MicroXRCEAgent &>/dev/null; then
     echo "[shark-isr] ERROR: MicroXRCEAgent not found."
     echo "            Install: sudo snap install micro-xrce-dds-agent --edge"
     exit 1
 fi
 
-# Resolve the agent command name (snap installs as micro-xrce-dds-agent)
 AGENT_CMD="$(command -v MicroXRCEAgent 2>/dev/null || command -v micro-xrce-dds-agent)"
 
 # ── Cleanup trap ─────────────────────────────────────────────────────────────
@@ -63,21 +72,41 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM EXIT
 
-# ── 1. MicroXRCE-DDS agent ───────────────────────────────────────────────────
+# ── 1. Gazebo Harmonic sim server ─────────────────────────────────────────────
+# Source PX4's gz env to get plugin + model paths, then launch the world.
+# PX4 v1.16 requires Gazebo to be running before the px4 binary starts.
+# shellcheck source=/dev/null
+source "${PX4_DIR}/build/px4_sitl_default/rootfs/gz_env.sh"
+
+echo "[shark-isr] Starting Gazebo (shark_isr_coastal world)..."
+echo "[shark-isr] GPS origin: Cottesloe Beach, Perth WA (-31.998, 115.748)"
+gz sim -r -s "${PX4_GZ_WORLDS}/shark_isr_coastal.sdf" &
+PIDS+=($!)
+
+# Wait for world to be ready (poll gz topic list)
+echo "[shark-isr] Waiting for Gazebo world..."
+for i in $(seq 1 30); do
+    if gz topic -l 2>/dev/null | grep -q "shark_isr_coastal/clock"; then
+        echo "[shark-isr] Gazebo world ready (${i}s)"
+        break
+    fi
+    if [[ $i -eq 30 ]]; then
+        echo "[shark-isr] ERROR: Timed out waiting for Gazebo world."
+        exit 1
+    fi
+    sleep 1
+done
+
+# ── 2. MicroXRCE-DDS agent ───────────────────────────────────────────────────
 echo "[shark-isr] Starting MicroXRCE-DDS agent on UDP4 :8888..."
 "${AGENT_CMD}" udp4 -p 8888 &
 PIDS+=($!)
 sleep 1
 
-# ── 2. PX4 SITL — tiltrotor + shark coastal world ────────────────────────────
+# ── 3. PX4 SITL — attaches to running Gazebo world ───────────────────────────
 echo "[shark-isr] Launching PX4 SITL (airframe 4020 gz_tiltrotor)..."
-echo "[shark-isr] World: ${WORLDS_DIR}/shark_isr_coastal.sdf"
-echo "[shark-isr] GPS origin: Cottesloe Beach, Perth WA (-31.998, 115.748)"
-echo ""
-
 export PX4_SYS_AUTOSTART=4020
 export PX4_GZ_WORLD=shark_isr_coastal
-export GZ_SIM_RESOURCE_PATH="${WORLDS_DIR}:${GZ_SIM_RESOURCE_PATH:-}"
 
 cd "${PX4_DIR}"
 ./build/px4_sitl_default/bin/px4 -d &
@@ -91,5 +120,4 @@ echo "            ros2 topic list | grep fmu"
 echo "[shark-isr] ─────────────────────────────────────────────────────"
 echo ""
 
-# Wait for all children
 wait "${PIDS[@]}"

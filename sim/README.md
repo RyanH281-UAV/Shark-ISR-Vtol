@@ -18,7 +18,11 @@ Do not share worlds, scripts, or configs with the SkimWing capstone or any other
 # 1. Install MicroXRCE-DDS agent (once per WSL install)
 sudo snap install micro-xrce-dds-agent --edge
 
-# 2. Build the shark workspace (includes px4_msgs + shark_isr_interfaces)
+# 2. Symlink the project world into PX4's worlds directory (once per PX4 clone)
+ln -sf ~/projects/shark-isr-vtol/sim/worlds/shark_isr_coastal.sdf \
+       ~/PX4-Autopilot/Tools/simulation/gz/worlds/shark_isr_coastal.sdf
+
+# 3. Build the shark workspace (includes px4_msgs + shark_isr_interfaces)
 source /opt/ros/humble/setup.bash
 cd ros2_ws
 colcon build
@@ -27,8 +31,11 @@ source install/setup.bash
 
 ## Running the simulation
 
+PX4 v1.16 with Gazebo Harmonic requires Gazebo to start first; the PX4 binary
+then attaches to the running world. `run_sim.sh` handles this automatically.
+
 ```bash
-# Terminal 1 — SITL + Gazebo + MicroXRCE-DDS agent
+# Terminal 1 — Gazebo + MicroXRCE-DDS agent + PX4 SITL
 ./scripts/run_sim.sh
 
 # Terminal 2 — verify PX4 topics visible in ROS 2
