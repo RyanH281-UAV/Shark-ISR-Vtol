@@ -29,7 +29,7 @@ Small drones can already fly search patterns. The gap this project targets is th
 2. **Confidence-gated transition** — detections accumulate confidence across frames (and decay on
    misses); only a sustained crossing of threshold τ triggers the autonomous SEARCH→TRACK
    transition and orbit-on-detect. One lucky frame never flies the aircraft.
-3. **Onboard, link-independent** — the detector (YOLOv8n compiled to `.hef`) runs on a Hailo-8L
+3. **Onboard, link-independent** — the detector (YOLOv8s compiled to `.hef`) runs on a Hailo-8L
    NPU on the aircraft. Losing every radio link costs situational awareness, never autonomy.
 
 ## Architecture
@@ -60,21 +60,33 @@ NED↔ENU conversion confined to one package).
 | `conops-portfolio.html` | ConOps — engineering edition: interface contract, exact transition conditions, failure analysis |
 | `conops-product.html` | ConOps — capability overview for a non-engineering audience |
 | `docs/ARCHITECTURE.md` | System diagram, responsibility boundary, dataflow contract |
-| `docs/DECISIONS.md` | ADR-001…009 — every locked decision with context and rationale |
+| `docs/DECISIONS.md` | ADR-001…011 — every locked decision with context and rationale |
 | `docs/BUILD_PLAN.md` | Phased plan with gates (interfaces → SITL → hardware) |
+| `docs/SITL_PROCEDURE.md` | DDS gate checks (G1–G4) + SITL test campaign (T1–T10), one test per ADR-011 fix |
 | `docs/HORNET_PLATFORM.md` | Airframe reference + energy/MTOW constraints |
 | `docs/REGULATORY.md` | CASA / operational notes (nothing asserted, everything flagged) |
+| `training/` | YOLOv8s fine-tune pipeline — download → merge → train → ONNX → Hailo `.hef` |
 | `CLAUDE.md` | Agent brief for the AI-orchestrated build workflow (Ruflo on Claude Code) |
-| `ros2_ws/` | ROS 2 workspace — populated as build phases land |
+| `ros2_ws/` | ROS 2 workspace — 7 packages, builds green (colcon 8/8 on Humble) |
 
 ## Status (gated, honest)
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Interface contract (6 interfaces, frames+units) | ✅ Frozen 2026-05-31 |
-| 2 | PX4 SITL + Gazebo coastal world + DDS bridge | 🔶 In progress |
-| 3–7 | Autopilot bridge → guidance → perception → mission → telemetry | ⬜ Planned |
-| 8 | Hardware bring-up, mass/power budget, flight test | ⬜ Planned |
+| 2 | PX4 SITL + Gazebo coastal world + DDS bridge | 🔶 Coastal world + launcher done; full stack builds & launches; DDS end-to-end gate (G1–G4) pending |
+| 3 | Autopilot bridge (sole PX4 boundary, uXRCE-DDS) | 🔶 Code complete + unit-tested; SITL pending |
+| 4 | Guidance (Bayesian map, search pattern, orbit-on-detect) | 🔶 Code complete + unit-tested; SITL pending |
+| 5 | Perception (Cam3 → Hailo detector → geolocation) | 🔶 Code complete + unit-tested; `.hef` compile + SITL pending |
+| 6 | Mission (state machine, failsafes) | 🔶 Code complete + unit-tested; SITL pending |
+| 7 | Telemetry (JSONL logs, GCS relay) | 🔶 Code complete; SITL rehearsal pending |
+| 8 | Hardware bring-up, mass/power budget, flight test | ⬜ Planned (post-budget) |
+
+**Where it stands now:** all seven packages are implemented and **build green (colcon 8/8 on ROS 2
+Humble)**, the full stack launches from one file (`shark_isr_bringup/launch/sitl.launch.py`), and
+**44/44 unit tests pass**. A full-stack code review (ADR-011, 2026-06-11) caught and fixed 2
+safety-critical + 6 high-severity bugs *before* any sim run — validating the SITL-first rule. The
+critical path now is the SITL campaign itself: nothing in the stack is sim-verified yet.
 
 Rule enforced throughout: **no code reaches the aircraft until it has passed in SITL.** Nothing in
 this repo claims flight-demonstrated capability until the flight-demo section of the site says so.
