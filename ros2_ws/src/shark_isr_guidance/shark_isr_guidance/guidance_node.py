@@ -87,6 +87,9 @@ class GuidanceNode(Node):
         # Transit state
         self._transit_target: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
+        # Hold position latched on entering IDLE (prevents setpoint drift).
+        self._hold_target: tuple[float, float, float] | None = None
+
         # Track state
         self._orbit_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
         self._tracked_lat: float = 0.0
@@ -128,9 +131,12 @@ class GuidanceNode(Node):
 
         det_e, det_n = 0.0, 0.0
         if msg.geo_valid and self._vehicle is not None:
-            # Convert lat/lon offset to approximate ENU (flat earth over small area).
-            det_e, det_n = self._latlondelta_to_enu(
+            # Flat-earth offset from the vehicle, added to the vehicle's absolute
+            # ENU position — the offset alone is NOT an ENU coordinate.
+            off_e, off_n = self._latlondelta_to_enu(
                 msg.latitude_deg, msg.longitude_deg)
+            det_e = self._vehicle.position_enu_m.x + off_e
+            det_n = self._vehicle.position_enu_m.y + off_n
         elif self._vehicle is not None:
             # Fall back: place detection at current vehicle position
             det_e = self._vehicle.position_enu_m.x
@@ -142,8 +148,12 @@ class GuidanceNode(Node):
             self._bayes_map.positive_detection(det_e, det_n, self._det_sigma)
 
         self._orbit_centre = (det_e, det_n, det_alt)
-        self._tracked_lat = msg.latitude_deg
-        self._tracked_lon = msg.longitude_deg
+        if msg.geo_valid:
+            self._tracked_lat = msg.latitude_deg
+            self._tracked_lon = msg.longitude_deg
+        elif self._vehicle is not None:
+            self._tracked_lat = self._vehicle.latitude_deg
+            self._tracked_lon = self._vehicle.longitude_deg
         self._set_phase(SearchState.PHASE_TRACK)
         self.get_logger().info(
             f'Detection → TRACK orbit at ({det_e:.1f}, {det_n:.1f}) m ENU, '
@@ -174,11 +184,16 @@ class GuidanceNode(Node):
             self._update_return(pos_e, pos_n)
 
     def _publish_hold(self, pos_e: float, pos_n: float) -> None:
-        alt = self._vehicle.position_enu_m.z if self._vehicle else 0.0
+        # Latch the hold target on first call so the setpoint doesn't follow the
+        # vehicle as it drifts.
+        if self._hold_target is None:
+            alt = self._vehicle.position_enu_m.z if self._vehicle else 0.0
+            self._hold_target = (pos_e, pos_n, alt)
+        he, hn, hu = self._hold_target
         sp = GuidanceSetpoint()
         sp.header = self._header()
         sp.setpoint_type = GuidanceSetpoint.TYPE_POSITION
-        sp.position_enu_m = Point(x=pos_e, y=pos_n, z=alt)
+        sp.position_enu_m = Point(x=he, y=hn, z=hu)
         sp.yaw_rad = float('nan')
         sp.cruise_speed_m_s = 0.0
         self._pub_setpoint.publish(sp)
@@ -189,7 +204,7 @@ class GuidanceNode(Node):
         sp.header = self._header()
         sp.setpoint_type = GuidanceSetpoint.TYPE_POSITION
         sp.position_enu_m = Point(x=te, y=tn, z=tu)
-        sp.yaw_rad = math.atan2(te - pos_e, tn - pos_n)  # face target (ENU CCW from East)
+        sp.yaw_rad = math.atan2(tn - pos_n, te - pos_e)  # face target (ENU: 0=East, CCW+)
         sp.cruise_speed_m_s = 0.0
         self._pub_setpoint.publish(sp)
 
@@ -227,7 +242,7 @@ class GuidanceNode(Node):
         sp.header = self._header()
         sp.setpoint_type = GuidanceSetpoint.TYPE_POSITION
         sp.position_enu_m = Point(x=wp.east, y=wp.north, z=wp.up)
-        sp.yaw_rad = math.atan2(wp.east - pos_e, wp.north - pos_n)
+        sp.yaw_rad = math.atan2(wp.north - pos_n, wp.east - pos_e)  # ENU: 0=East, CCW+
         sp.cruise_speed_m_s = 0.0
         self._pub_setpoint.publish(sp)
 
@@ -287,12 +302,14 @@ class GuidanceNode(Node):
 
     def _current_target_point(self) -> Point:
         if self._phase == SearchState.PHASE_TRANSIT:
-            return Point(*self._transit_target)
+            te, tn, tu = self._transit_target
+            return Point(x=te, y=tn, z=tu)
         if self._phase == SearchState.PHASE_SEARCH and self._waypoints:
             wp = self._waypoints[min(self._wp_idx, len(self._waypoints) - 1)]
             return Point(x=wp.east, y=wp.north, z=wp.up)
         if self._phase == SearchState.PHASE_TRACK:
-            return Point(*self._orbit_centre)
+            oe, on_, ou = self._orbit_centre
+            return Point(x=oe, y=on_, z=ou)
         if self._vehicle:
             p = self._vehicle.position_enu_m
             return Point(x=p.x, y=p.y, z=p.z)
@@ -367,6 +384,8 @@ class GuidanceNode(Node):
     def _set_phase(self, phase: int) -> None:
         if self._phase in (SearchState.PHASE_SEARCH, SearchState.PHASE_TRACK):
             self._time_on_station += time.monotonic() - self._phase_start
+        if phase == SearchState.PHASE_IDLE:
+            self._hold_target = None  # re-latch on next hold publish
         self._phase = phase
         self._phase_start = time.monotonic()
 
@@ -379,7 +398,9 @@ class GuidanceNode(Node):
     def _latlondelta_to_enu(
         self, lat_deg: float, lon_deg: float
     ) -> tuple[float, float]:
-        """Flat-earth approximate ENU from WGS-84 lat/lon relative to vehicle home."""
+        """Flat-earth (east, north) offset of lat/lon from the vehicle's CURRENT
+        position.  NOT an absolute ENU coordinate — callers must add the
+        vehicle's position_enu_m to get one."""
         if self._vehicle is None or not self._vehicle.position_valid:
             return 0.0, 0.0
         lat0 = self._vehicle.latitude_deg

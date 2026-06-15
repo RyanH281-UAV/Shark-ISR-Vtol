@@ -49,10 +49,12 @@ class MissionNode(Node):
         self.declare_parameter('low_battery_threshold', 0.20)
         self.declare_parameter('arm_timeout_s', 10.0)
         self.declare_parameter('transit_timeout_s', 300.0)
+        self.declare_parameter('track_timeout_s', 120.0)
 
         self._low_batt_thresh = self.get_parameter('low_battery_threshold').value
         self._arm_timeout = self.get_parameter('arm_timeout_s').value
         self._transit_timeout = self.get_parameter('transit_timeout_s').value
+        self._track_timeout = self.get_parameter('track_timeout_s').value
 
         # ── State ────────────────────────────────────────────────────────────
         self._phase = MissionPhase.IDLE
@@ -125,6 +127,16 @@ class MissionNode(Node):
     def _timer_update(self) -> None:
         self._check_battery_failsafe()
         self._check_phase_timeouts()
+        self._check_starting_complete()
+
+    def _check_starting_complete(self) -> None:
+        """STARTING → TRANSITING once PX4 confirms armed + Offboard (real state,
+        not just service acks)."""
+        if self._phase != MissionPhase.STARTING or self._vehicle is None:
+            return
+        if self._vehicle.armed and self._vehicle.offboard_active:
+            self.get_logger().info('PX4 confirmed armed + Offboard → transit')
+            self._do_transit()
 
     def _check_battery_failsafe(self) -> None:
         if self._low_battery_triggered:
@@ -152,6 +164,11 @@ class MissionNode(Node):
             if elapsed > self._transit_timeout:
                 self.get_logger().warn(
                     f'Transit timeout ({self._transit_timeout:.0f}s) — starting search anyway')
+                self._start_search()
+        elif self._phase == MissionPhase.TRACKING:
+            if elapsed > self._track_timeout:
+                self.get_logger().info(
+                    f'Track timeout ({self._track_timeout:.0f}s) — resuming search')
                 self._start_search()
 
     # ── MissionCommand service ────────────────────────────────────────────────
@@ -247,8 +264,9 @@ class MissionNode(Node):
     def _on_offboard_response(self, future) -> None:
         result = future.result()
         if result and result.accepted:
-            self.get_logger().info('Offboard active — starting transit')
-            self._do_transit()
+            # Bridge accepted the request; PX4 confirmation (armed + nav_state
+            # OFFBOARD) is verified in _timer_update before transit starts.
+            self.get_logger().info('Offboard requested — awaiting PX4 confirmation')
         else:
             reason = result.reason if result else 'no response'
             self.get_logger().error(f'Offboard rejected: {reason}')
@@ -333,7 +351,12 @@ class MissionNode(Node):
         return SearchState.PHASE_IDLE
 
     def _latlondelta_to_enu(self, lat_deg: float, lon_deg: float) -> tuple[float, float]:
-        """Flat-earth ENU offset of (lat_deg, lon_deg) from vehicle home."""
+        """Absolute ENU (east, north) of (lat_deg, lon_deg).
+
+        Computes the flat-earth offset from the vehicle's current lat/lon and
+        adds the vehicle's current ENU position, so the result is valid even
+        when the vehicle is far from the ENU origin (e.g. CMD_START mid-flight).
+        """
         if self._vehicle is None or not self._vehicle.position_valid:
             return 0.0, 0.0
         lat0 = self._vehicle.latitude_deg
@@ -343,7 +366,10 @@ class MissionNode(Node):
         dlon = math.radians(lon_deg - lon0)
         north = dlat * R
         east = dlon * R * math.cos(math.radians(lat0))
-        return east, north
+        return (
+            self._vehicle.position_enu_m.x + east,
+            self._vehicle.position_enu_m.y + north,
+        )
 
 
 def main(args=None) -> None:

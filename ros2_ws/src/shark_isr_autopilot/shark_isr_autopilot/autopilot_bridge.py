@@ -33,6 +33,7 @@ from px4_msgs.msg import (
     VehicleCommand,
     VehicleGlobalPosition,
     VehicleLocalPosition,
+    VehicleStatus,
     VtolVehicleStatus,
 )
 
@@ -83,9 +84,12 @@ class AutopilotBridge(Node):
         self._global_pos: VehicleGlobalPosition | None = None
         self._battery: BatteryStatus | None = None
         self._vtol_status: VtolVehicleStatus | None = None
+        self._vehicle_status: VehicleStatus | None = None
         self._guidance_setpoint: GuidanceSetpoint | None = None
         self._last_setpoint_time: rclpy.time.Time | None = None
-        self._offboard_active = False
+        self._offboard_active = False              # streaming requested by mission
+        self._offboard_requested_at: rclpy.time.Time | None = None
+        self._last_mode_switch_at: rclpy.time.Time | None = None
 
         # ── PX4 subscribers ──────────────────────────────────────────────────
         self.create_subscription(
@@ -103,6 +107,9 @@ class AutopilotBridge(Node):
         self.create_subscription(
             VtolVehicleStatus, '/fmu/out/vtol_vehicle_status',
             self._cb_vtol, PX4_QOS)
+        self.create_subscription(
+            VehicleStatus, '/fmu/out/vehicle_status',
+            self._cb_status, PX4_QOS)
 
         # ── PX4 publishers ───────────────────────────────────────────────────
         self._pub_offboard_mode = self.create_publisher(
@@ -149,6 +156,17 @@ class AutopilotBridge(Node):
 
     def _cb_vtol(self, msg: VtolVehicleStatus) -> None:
         self._vtol_status = msg
+
+    def _cb_status(self, msg: VehicleStatus) -> None:
+        self._vehicle_status = msg
+
+    def _px4_is_armed(self) -> bool:
+        s = self._vehicle_status
+        return s is not None and s.arming_state == VehicleStatus.ARMING_STATE_ARMED
+
+    def _px4_nav_offboard(self) -> bool:
+        s = self._vehicle_status
+        return s is not None and s.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD
 
     # ── Guidance setpoint callback ───────────────────────────────────────────
 
@@ -215,37 +233,61 @@ class AutopilotBridge(Node):
             tsp.yawspeed = -sp.yaw_rate_rad_s if not math.isnan(sp.yaw_rate_rad_s) else float('nan')
 
         elif sp.setpoint_type == GuidanceSetpoint.TYPE_ORBIT:
-            # Orbit: send MAV_CMD_DO_ORBIT via VehicleCommand (PX4 handles it autonomously).
-            # TrajectorySetpoint still needed to keep offboard heartbeat happy — send hold.
-            tsp.position = [float('nan'), float('nan'), float('nan')]
-            tsp.velocity = [0.0, 0.0, 0.0]
-            tsp.yaw = float('nan')
-            self._send_orbit_command(sp)
+            # Synthesise the orbit as streamed position setpoints so PX4 stays in
+            # Offboard for both hover and fixed-wing phases.  (MAV_CMD_DO_ORBIT
+            # would switch PX4 into Orbit flight mode — MC-only, and it drops
+            # Offboard, leaving later SEARCH setpoints ignored.)
+            tsp.position, tsp.yaw = self._orbit_setpoint_ned(sp)
+            tsp.velocity = [float('nan'), float('nan'), float('nan')]
 
         self._pub_trajectory.publish(tsp)
 
-    def _send_orbit_command(self, sp: GuidanceSetpoint) -> None:
-        """Send MAV_CMD_DO_ORBIT (34) to PX4.  Centre in NED, altitude AMSL from local pos."""
-        x_ned, y_ned, _ = enu_to_ned(
+        # Offboard mode switch: PX4 rejects OFFBOARD unless setpoints have been
+        # streaming beforehand.  Switch ~1 s after the stream starts; retry every
+        # second until VehicleStatus confirms nav_state == OFFBOARD.
+        if self._offboard_active and not self._px4_nav_offboard():
+            now = self.get_clock().now()
+            if self._offboard_requested_at is None:
+                self._offboard_requested_at = now
+            warmed_up = (now - self._offboard_requested_at).nanoseconds > 1.0e9
+            retry_due = (
+                self._last_mode_switch_at is None
+                or (now - self._last_mode_switch_at).nanoseconds > 1.0e9
+            )
+            if warmed_up and retry_due:
+                self._send_mode(self._MAIN_OFFBOARD)
+                self._last_mode_switch_at = now
+
+    # Lead angle for the synthesised orbit: the position target stays this far
+    # ahead of the vehicle on the circle, producing continuous tangential motion.
+    _ORBIT_LEAD_RAD = 0.4
+
+    def _orbit_setpoint_ned(self, sp: GuidanceSetpoint) -> tuple[list, float]:
+        """Position setpoint on the orbit circle, led ahead of the vehicle.
+
+        Returns ([x_ned, y_ned, z_ned], yaw_ned) with yaw facing the orbit centre.
+        NED top-view: angle = atan2(E, N) increases clockwise from above, so a
+        clockwise orbit advances the angle positively.
+        """
+        cx_ned, cy_ned, cz_ned = enu_to_ned(
             sp.position_enu_m.x,
             sp.position_enu_m.y,
             sp.position_enu_m.z,
         )
-        alt_amsl = self._global_pos.alt if self._global_pos else 0.0
-        radius = sp.orbit_radius_m
-        direction = -1.0 if sp.orbit_clockwise else 1.0  # PX4: 1=CW, -1=CCW
+        radius = max(1.0, sp.orbit_radius_m)
 
-        cmd = self._make_vehicle_command(
-            command=34,  # MAV_CMD_DO_ORBIT
-            param1=radius,
-            param2=sp.cruise_speed_m_s if sp.cruise_speed_m_s > 0.0 else float('nan'),
-            param3=direction,
-            param4=float('nan'),  # yaw behaviour: NaN = auto
-            param5=x_ned,
-            param6=y_ned,
-            param7=alt_amsl,
-        )
-        self._pub_vehicle_cmd.publish(cmd)
+        lp = self._local_pos
+        if lp is None:
+            return [cx_ned + radius, cy_ned, cz_ned], float('nan')
+
+        theta = math.atan2(lp.y - cy_ned, lp.x - cx_ned)
+        lead = self._ORBIT_LEAD_RAD if sp.orbit_clockwise else -self._ORBIT_LEAD_RAD
+        theta_t = theta + lead
+
+        x_t = cx_ned + radius * math.cos(theta_t)
+        y_t = cy_ned + radius * math.sin(theta_t)
+        yaw_to_centre = math.atan2(cy_ned - lp.y, cx_ned - lp.x)
+        return [x_t, y_t, cz_ned], yaw_to_centre
 
     # ── 20 Hz VehicleState publisher ─────────────────────────────────────────
 
@@ -266,7 +308,7 @@ class AutopilotBridge(Node):
         if lp.xy_valid:
             ex, ey, ez = ned_to_enu(lp.x, lp.y, lp.z)
             vs.position_enu_m = Point(x=ex, y=ey, z=ez)
-            vs.position_h_std_m = math.sqrt(lp.eph ** 2 + lp.eph ** 2) / math.sqrt(2.0)
+            vs.position_h_std_m = float(lp.eph)
         else:
             vs.position_enu_m = Point()
             vs.position_h_std_m = float('inf')
@@ -313,9 +355,9 @@ class AutopilotBridge(Node):
             vs.battery_fraction = -1.0
             vs.battery_voltage_v = 0.0
 
-        # Status flags
-        vs.armed = lp.ref_alt > 0.0  # crude; replaced when arming state is available
-        vs.offboard_active = self._offboard_active
+        # Status flags (from PX4 VehicleStatus — actual arming/nav state)
+        vs.armed = self._px4_is_armed()
+        vs.offboard_active = self._px4_nav_offboard()
         vs.position_valid = lp.xy_valid
 
         self._pub_vehicle_state.publish(vs)
@@ -338,23 +380,27 @@ class AutopilotBridge(Node):
             response.accepted = True
 
         elif cmd == AutopilotCommand.Request.CMD_OFFBOARD:
+            # Start streaming setpoints now; the heartbeat timer sends the actual
+            # mode switch after >1 s of stream (PX4 rejects OFFBOARD without a
+            # pre-existing setpoint stream) and retries until nav_state confirms.
             self._offboard_active = True
-            self._send_mode(px4_custom_mode=6)  # OFFBOARD
+            self._offboard_requested_at = self.get_clock().now()
+            self._last_mode_switch_at = None
             response.accepted = True
 
         elif cmd == AutopilotCommand.Request.CMD_HOLD:
             self._offboard_active = False
-            self._send_mode(px4_custom_mode=3)  # HOLD (Position)
+            self._send_mode(self._MAIN_AUTO, self._SUB_AUTO_LOITER)
             response.accepted = True
 
         elif cmd == AutopilotCommand.Request.CMD_RTL:
             self._offboard_active = False
-            self._send_mode(px4_custom_mode=5)  # RTL
+            self._send_mode(self._MAIN_AUTO, self._SUB_AUTO_RTL)
             response.accepted = True
 
         elif cmd == AutopilotCommand.Request.CMD_LAND:
             self._offboard_active = False
-            self._send_mode(px4_custom_mode=9)  # LAND
+            self._send_mode(self._MAIN_AUTO, self._SUB_AUTO_LAND)
             response.accepted = True
 
         else:
@@ -376,12 +422,23 @@ class AutopilotBridge(Node):
         self._pub_vehicle_cmd.publish(cmd)
         self.get_logger().info(f'Sent ARM={arm}')
 
-    def _send_mode(self, px4_custom_mode: int) -> None:
-        """Send VEHICLE_CMD_DO_SET_MODE with PX4 custom main mode."""
+    # PX4 custom mode encoding for MAV_CMD_DO_SET_MODE:
+    #   param2 = main mode, param3 = sub mode (sub mode only used when main = AUTO).
+    # Main modes: 1=MANUAL 2=ALTCTL 3=POSCTL 4=AUTO 5=ACRO 6=OFFBOARD 7=STABILIZED
+    # AUTO sub modes: 3=LOITER 5=RTL 6=LAND
+    _MAIN_AUTO = 4.0
+    _MAIN_OFFBOARD = 6.0
+    _SUB_AUTO_LOITER = 3.0
+    _SUB_AUTO_RTL = 5.0
+    _SUB_AUTO_LAND = 6.0
+
+    def _send_mode(self, main_mode: float, sub_mode: float = 0.0) -> None:
+        """Send VEHICLE_CMD_DO_SET_MODE with PX4 custom main/sub mode."""
         cmd = self._make_vehicle_command(
             command=176,    # MAV_CMD_DO_SET_MODE
             param1=1.0,     # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
-            param2=float(px4_custom_mode),
+            param2=main_mode,
+            param3=sub_mode,
         )
         self._pub_vehicle_cmd.publish(cmd)
 

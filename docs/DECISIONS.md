@@ -169,3 +169,39 @@ against the mass/power budget.*
 
 - **Consequence:** `config/perception.yaml` sets `patrol_altitude_m: 30.0`. Actual AGL read from `VehicleState.altitude_agl_m` at runtime for geolocation.
 - **Status:** Locked (2026-06-08, Phase 5 pre-implementation).
+
+---
+
+### ADR-011 — Orbit synthesised in Offboard; attitude_q is body→world
+
+- **Context:** Code review (2026-06-11) found the TRACK orbit was implemented via
+  MAV_CMD_DO_ORBIT with local NED metres in param5/6 (PX4 expects lat/lon degrees),
+  re-sent at 20 Hz. DO_ORBIT also switches PX4 out of Offboard into Orbit flight
+  mode (MC-only), leaving subsequent SEARCH position setpoints silently ignored.
+  Separately, VehicleState.attitude_q was documented as world→body while the
+  bridge actually publishes body→world; geolocate.py compensated by conjugating,
+  so off-nadir geolocation errors would mirror. Unit tests used only yaw-only
+  quaternions with nadir rays, which cannot distinguish the two conventions.
+- **Decision:**
+  1. The TRACK orbit is **synthesised by the autopilot bridge as streamed Offboard
+     position setpoints** (target led ~23° ahead of the vehicle on the circle,
+     yaw facing the centre). MAV_CMD_DO_ORBIT is not used.
+  2. `VehicleState.attitude_q` is **body-FLU → ENU-world** (standard ROS
+     orientation, REP-103). geolocate.py uses the quaternion directly (no
+     conjugate). Convention is locked by two new convention-sensitive unit tests
+     (heading-North off-centre bbox; 20° roll nadir bbox).
+  3. Offboard engagement: bridge streams setpoints for ≥1 s before commanding
+     OFFBOARD and retries each second until `VehicleStatus.nav_state` confirms.
+     `armed`/`offboard_active` in VehicleState now come from PX4 VehicleStatus,
+     not heuristics.
+- **Rationale:** Staying in Offboard for the orbit works in both hover and
+  fixed-wing VTOL phases, eliminates mode re-engagement on TRACK→SEARCH, and
+  removes the command-spam and unit bugs in one move. body→world is what the
+  frame-transform chain actually produces and matches every other ROS consumer's
+  expectation of an orientation quaternion.
+- **Consequence:** Same review also fixed: PX4 custom-mode encoding for
+  HOLD/RTL/LAND (previously sent POSCTL/ACRO/invalid — the ACRO-on-RTL bug was
+  safety-critical), ENU-origin errors in detection/search-centre placement,
+  ENU yaw convention in guidance setpoints, Point() keyword-construction crash,
+  hold-position drift latch, and a mission-level TRACKING timeout (120 s default).
+- **Status:** Locked (2026-06-11). SITL verification of all fixes pending (Phase 2 gate).

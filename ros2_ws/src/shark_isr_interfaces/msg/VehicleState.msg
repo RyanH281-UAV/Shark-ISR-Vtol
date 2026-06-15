@@ -10,7 +10,7 @@
 # Coordinate frames
 #   position_enu_m     : ENU local frame, origin = home at arm [m]
 #   velocity_enu_m_s   : ENU frame [m/s]
-#   attitude_q         : ENU-world → body-FLU quaternion (ROS 2 REP-103)
+#   attitude_q         : body-FLU → ENU-world quaternion (ROS 2 REP-103 orientation)
 #   latitude_deg /
 #   longitude_deg      : WGS-84 [deg]
 #   altitude_amsl_m    : AMSL [m]
@@ -35,7 +35,8 @@ geometry_msgs/Vector3 velocity_enu_m_s # x=East [m/s], y=North [m/s], z=Up [m/s]
 float32 groundspeed_m_s                # [m/s] horizontal magnitude
 
 # ── Attitude ─────────────────────────────────────────────────────────────────
-# Quaternion: ENU world frame → body FLU frame (ROS 2 REP-103)
+# Quaternion: body FLU frame → ENU world frame (standard ROS orientation —
+# rotates body-frame vectors into the world frame; REP-103)
 geometry_msgs/Quaternion attitude_q
 
 # ── AGL — used by perception for geolocation transform ───────────────────────

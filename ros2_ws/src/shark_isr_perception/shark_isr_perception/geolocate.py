@@ -14,8 +14,8 @@ Coordinate frames
   ENU world      : +x East, +y North, +z Up
 
   R_cam_to_body  : cam_y → body_x, -cam_x → body_y, -cam_z → body_z
-  attitude_q     : quaternion ENU world → body FLU  (from VehicleState.attitude_q)
-                   inverse (conjugate) gives body FLU → ENU world.
+  attitude_q     : quaternion body FLU → ENU world (from VehicleState.attitude_q,
+                   standard ROS orientation: rotates body-frame vectors into world).
 
 Flat-earth ground intersection
 -------------------------------
@@ -54,11 +54,6 @@ def _quat_rotate(v: np.ndarray, q: np.ndarray) -> np.ndarray:
     return v + qw * t + np.cross(qv, t)
 
 
-def _quat_conjugate(q: np.ndarray) -> np.ndarray:
-    """Return conjugate (inverse for unit quaternion) of q = [qx, qy, qz, qw]."""
-    return np.array([-q[0], -q[1], -q[2], q[3]], dtype=np.float64)
-
-
 def geolocate(
     bbox_cx_norm: float,
     bbox_cy_norm: float,
@@ -88,7 +83,8 @@ def geolocate(
     agl_m:
         Vehicle altitude above ground level [m].  Must be > 0.
     attitude_qxyzw:
-        ENU-world → body-FLU quaternion (qx, qy, qz, qw) from VehicleState.
+        Body-FLU → ENU-world quaternion (qx, qy, qz, qw) from VehicleState
+        (standard ROS orientation convention).
 
     Returns
     -------
@@ -112,10 +108,9 @@ def geolocate(
     # 3. Rotate to body FLU (nadir mount, image top = forward)
     ray_body = _R_CAM_TO_BODY @ ray_cam
 
-    # 4. Rotate body FLU → ENU world (apply inverse of world→body quaternion)
+    # 4. Rotate body FLU → ENU world (attitude_q is already body→world)
     q = np.array(attitude_qxyzw, dtype=np.float64)
-    q_inv = _quat_conjugate(q)
-    ray_enu = _quat_rotate(ray_body, q_inv)
+    ray_enu = _quat_rotate(ray_body, q)
 
     # 5. Intersect with ground plane (z_ENU = 0, vehicle at z_ENU = +agl_m)
     if abs(ray_enu[2]) < 1e-6:

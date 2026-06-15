@@ -5,7 +5,19 @@
       "mcp__claude-flow__memory_retrieve",
       "mcp__claude-flow__neural_status",
       "mcp__claude-flow__swarm_init",
-      "mcp__claude-flow__memory_search"
+      "mcp__claude-flow__memory_search",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); mcps=d.get\\('mcpServers',{}\\); [print\\(k, ':', list\\(v.keys\\(\\)\\)\\) for k,v in mcps.items\\(\\) if 'roboflow' in k.lower\\(\\)]\")",
+      "Bash(python3 -m json.tool)",
+      "Read(//home/ryanh/.claude/**)",
+      "Read(//mnt/c/Users/ryanh/.claude/**)",
+      "Read(//home/ryanh/**)",
+      "Bash(nvm list *)",
+      "Bash(python3 *)",
+      "Bash(xargs -I{} sh -c 'echo \"=== {} ===\"; cat \"{}\"')",
+      "WebSearch",
+      "Bash(echo \"EXIT $?\")",
+      "Read(//tmp/**)",
+      "Bash(node /mnt/c/Users/ryanh/.claude/plugins/marketplaces/ruflo/bin/cli.js --version)"
     ]
   },
   "enableAllProjectMcpServers": true,

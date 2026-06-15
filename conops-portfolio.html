@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConOps — Shark-ISR VTOL · Autonomous Maritime Patrol</title>
+<meta name="description" content="Concept of Operations for an autonomous shark-monitoring VTOL: mission profile, command responsibility, failure modes, and performance envelope — interactive.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F2E8; --bg2:#F0E9DB; --panel:#FFFFFF; --panel2:#FAF6EC;
+  --line:#E2D9C6; --line2:#C9BDA3;
+  --text:#27434F; --bright:#10303B; --muted:#5E7682;
+  --teal:#0E7C86; --amber:#D97B25; --slate:#4F7387; --warn:#B5482E;
+  --display:'Saira Condensed',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button{font-family:var(--mono);cursor:pointer}
+.wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+section{padding:64px 0;border-top:1px solid var(--line)}
+section.alt{background:var(--bg2)}
+h1,h2,h3{font-family:var(--display);text-transform:uppercase;letter-spacing:.045em;line-height:1.08}
+h1{font-size:clamp(2.2rem,5.5vw,3.6rem);font-weight:700;color:var(--bright)}
+h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:600;color:var(--bright);margin-bottom:8px}
+h3{font-size:1rem;font-weight:600;color:var(--text);letter-spacing:.09em;margin-bottom:10px}
+p{max-width:76ch}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:14px}
+.eyebrow::before{content:"// ";color:var(--teal)}
+.sub{color:var(--muted);margin-bottom:34px;max-width:70ch}
+.mono{font-family:var(--mono)}
+.note{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.04em}
+.badge{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;padding:3px 9px;border-radius:2px;white-space:nowrap;vertical-align:middle}
+.b-plan{color:var(--slate);border:1px solid var(--slate)}
+.b-sim{color:var(--amber);border:1px solid var(--amber)}
+.b-verify{color:var(--warn);border:1px solid var(--warn)}
+.brkt{position:relative}
+.brkt::before,.brkt::after{content:"";position:absolute;width:14px;height:14px;border:1px solid var(--line2);pointer-events:none}
+.brkt::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+.brkt::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+nav{position:sticky;top:0;background:rgba(247,242,232,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:60}
+nav .wrap{display:flex;align-items:center;gap:22px;height:52px;overflow-x:auto;scrollbar-width:none}
+nav .brand{font-family:var(--mono);font-size:.78rem;color:var(--amber);white-space:nowrap;letter-spacing:.08em}
+nav a.nl{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+nav a.nl:hover{color:var(--bright);text-decoration:none}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px}
+.card p{font-size:.9rem;color:var(--muted)}
+.mono-h{font-family:var(--mono);font-size:.74rem;color:var(--teal);margin-bottom:8px;display:block;letter-spacing:.06em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line2)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:top}
+td:first-child{color:var(--text)}
+
+/* doc header */
+.dochead{padding:84px 0 56px;border-bottom:1px solid var(--line)}
+.docmeta{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);margin-top:36px}
+.docmeta div{padding:14px 16px;border-right:1px solid var(--line)}
+.docmeta div:last-child{border-right:none}
+.docmeta .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.docmeta .v{font-family:var(--mono);font-size:.85rem;color:var(--bright);margin-top:4px}
+
+/* mission profile */
+.mp-svg{width:100%;height:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:3px}
+.mp-seg{cursor:pointer}
+.mp-seg path,.mp-seg circle{transition:all .15s}
+.mp-seg .hit{fill:transparent;stroke:transparent;stroke-width:26}
+.mp-seg.active .ln{stroke:var(--amber)!important;stroke-width:3!important}
+.mp-lab{font-family:var(--mono);font-size:9px;fill:var(--muted);letter-spacing:.8px}
+.mp-seg.active + .mp-lab,.mp-seg.active .mp-lab{fill:var(--amber)}
+.mp-panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px;margin-top:14px;min-height:170px}
+.mp-panel h3{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.mp-kv{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+.mp-kv div{border:1px solid var(--line);border-radius:2px;padding:10px 12px}
+.mp-kv .k{font-family:var(--mono);font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.mp-kv .v{font-size:.84rem;color:var(--text);margin-top:3px}
+.stepper{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.sbtn{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;background:none;border:1px solid var(--line2);color:var(--text);padding:8px 15px;border-radius:2px}
+.sbtn:hover{border-color:var(--teal);color:var(--bright)}
+.sbtn.primary{border-color:var(--amber);color:var(--amber)}
+.sbtn.primary:hover{background:var(--amber);color:#FFFFFF}
+
+/* C2 matrix */
+.c2-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.c2-tab{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;padding:8px 13px;border:1px solid var(--line2);border-radius:2px;color:var(--muted);background:none}
+.c2-tab.on{color:#FFFFFF;background:var(--teal);border-color:var(--teal)}
+.c2-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.c2-col{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:18px;min-height:190px}
+.c2-col h3{font-size:.86rem}
+.c2-col ul{list-style:none;margin-top:8px}
+.c2-col li{font-size:.84rem;color:var(--muted);padding:7px 0;border-top:1px solid var(--line)}
+.c2-col.op{border-top:2px solid var(--slate)}
+.c2-col.ros{border-top:2px solid var(--teal)}
+.c2-col.px4{border-top:2px solid var(--amber)}
+
+/* failure explorer */
+.fail-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.fbtn{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;padding:9px 14px;border:1px solid var(--line2);border-radius:2px;color:var(--muted);background:none}
+.fbtn.on{color:#FFFFFF;background:var(--warn);border-color:var(--warn)}
+.chain{display:flex;flex-wrap:wrap;align-items:stretch;gap:0}
+.chain .node{background:var(--panel);border:1px solid var(--line2);padding:14px 16px;flex:1;min-width:170px;position:relative}
+.chain .node+.node{border-left:none}
+.chain .node+.node::before{content:"\203A";position:absolute;left:-7px;top:50%;transform:translateY(-50%);color:var(--warn);font-family:var(--mono);background:var(--bg);padding:0 2px}
+.chain .node .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+.chain .node p{font-size:.82rem;color:var(--text)}
+.chain .node.safe{border-top:2px solid var(--teal)}
+.fail-note{margin-top:14px}
+
+/* comms svg */
+.cm-svg{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px}
+.cm-box rect{fill:var(--panel2);stroke:var(--line2);stroke-width:1.3}
+.cm-box text{font-family:var(--mono);font-size:11px;fill:var(--text);letter-spacing:.5px}
+.cm-box .sub{font-size:8.5px;fill:#5E7682}
+.cm-link{stroke-width:1.4;fill:none}
+.cm-llab{font-family:var(--mono);font-size:9px;letter-spacing:.4px}
+
+/* estimator */
+.est{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.est .ctrl{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px}
+.est label{font-family:var(--mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:block;margin:16px 0 6px}
+.est label:first-of-type{margin-top:0}
+.est select,.est input[type=number]{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--bright);font-family:var(--mono);font-size:.85rem;padding:9px 10px;border-radius:2px}
+.est input[type=range]{width:100%;accent-color:var(--teal)}
+.est .rv2{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+.est .out{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px}
+.est .big{font-family:var(--display);font-size:2.4rem;color:var(--bright);line-height:1}
+.est .ok{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.est .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.76rem;color:var(--muted);padding:7px 0;border-top:1px solid var(--line)}
+.est .row b{color:var(--text);font-weight:500}
+.formula{font-family:var(--mono);font-size:.72rem;color:var(--teal);background:var(--panel2);border:1px solid var(--line);border-radius:2px;padding:10px 12px;margin-top:12px;overflow-x:auto;white-space:nowrap}
+.caveat{border-left:2px solid var(--warn);padding:10px 14px;margin-top:16px;font-size:.84rem;color:var(--muted);background:var(--panel2)}
+.caveat b{color:var(--warn);font-family:var(--mono);font-size:.7rem;letter-spacing:.12em}
+
+footer{border-top:1px solid var(--line);padding:44px 0;font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+/* beach additions */
+.seaband{margin-top:36px;border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+.seaband svg{display:block;width:100%;height:auto}
+.imgslot{margin-top:14px;border:1.5px dashed var(--line2);border-radius:3px;background:var(--panel2);padding:36px 20px;text-align:center}
+.imgslot .t{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;display:block}
+.imgslot .s{font-family:var(--mono);font-size:.64rem;color:var(--muted);opacity:.75;display:block;margin-top:6px}
+.rv{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.rv{opacity:1;transform:none;transition:none}}
+@media (max-width:880px){
+  .grid2,.grid3,.c2-grid,.est{grid-template-columns:1fr}
+  .docmeta{grid-template-columns:1fr 1fr}
+  .docmeta div{border-top:1px solid var(--line)}
+  .mp-kv{grid-template-columns:1fr}
+  section{padding:48px 0}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">CONOPS / SHARK-ISR</span>
+    <a class="nl" href="#need">Need</a>
+    <a class="nl" href="#design">Design</a>
+    <a class="nl" href="#profile">Mission Profile</a>
+    <a class="nl" href="#c2">Command</a>
+    <a class="nl" href="#failsafe">Failsafe</a>
+    <a class="nl" href="#comms">Comms</a>
+    <a class="nl" href="#envelope">Envelope</a>
+    <a class="nl" href="#data">Data</a>
+    <a class="nl" href="#reg">Regulatory</a>
+  </div>
+</nav>
+
+<!-- ================= DOC HEADER — edit version/date here ================= -->
+<header class="dochead">
+  <div class="wrap">
+    <span class="eyebrow">Concept of Operations</span>
+    <h1>Autonomous Shark-Monitoring VTOL<br>Maritime Patrol ISR</h1>
+    <p class="sub" style="margin-top:18px">Operational concept for a small VTOL aircraft performing
+      persistent coastal surveillance with onboard detection and autonomous mode transition.
+      This document describes the system <i>as designed</i>; a commercial service variant is out of
+      scope and would fork from this baseline.</p>
+    <div class="docmeta brkt">
+      <div><div class="k">Document</div><div class="v">CONOPS-001 / ENG</div></div>
+      <div><div class="k">Edition</div><div class="v">Engineering · Portfolio</div></div>
+      <div><div class="k">Date</div><div class="v">2026-06-11</div></div>
+      <div><div class="k">Author</div><div class="v">Ryan H. — QUT EAE</div></div>
+    </div>
+    <p class="note" style="margin-top:14px">References: Titan Dynamics Hornet Build &amp; User Manual Rev 1.1 ·
+      Project decision log (ADR-001…009) · System architecture &amp; build plan. Capabilities not yet
+      demonstrated carry a <span class="badge b-plan">Planned</span> badge; externally dependent items carry
+      <span class="badge b-verify">&#9888; Verify</span>.</p>
+    <!-- SEA BAND — illustrative aerial scene; replace with real drone capture later -->
+    <div class="seaband brkt" aria-hidden="true">
+      <svg viewBox="0 0 960 150" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#D9EDE8"/><stop offset=".55" stop-color="#9FD1CA"/><stop offset="1" stop-color="#6FB1AB"/>
+          </linearGradient>
+          <symbol id="shk" viewBox="-110 -45 220 90">
+            <path d="M96,0 C78,-8 52,-12 34,-11 C28,-19 14,-32 2,-37 C4,-28 8,-18 13,-12 C-6,-9 -30,-6 -54,-3 C-67,-5 -83,-15 -96,-24 C-91,-13 -87,-5 -87,0 C-87,5 -91,13 -96,24 C-83,15 -67,5 -54,3 C-30,6 -6,9 13,12 C8,18 4,28 2,37 C14,32 28,19 34,11 C52,12 78,8 96,0 Z"/>
+          </symbol>
+        </defs>
+        <rect width="960" height="150" fill="url(#water)"/>
+        <g stroke="rgba(255,255,255,.35)" fill="none">
+          <path d="M-20,34 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+          <path d="M-50,84 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+          <path d="M-35,124 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+        </g>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#16454F" opacity=".82" transform="translate(180,88) scale(.52) rotate(16)"/>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#16454F" opacity=".6" transform="translate(442,52) scale(.32) rotate(-14)"/>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#12323B" opacity=".92" transform="translate(724,92) scale(.78) rotate(7)"/>
+        <g stroke="#B5482E" fill="none" stroke-width="1.6">
+          <circle cx="724" cy="92" r="56" stroke-dasharray="6 5"/>
+          <path d="M661,29 h14 M661,29 v14 M787,29 h-14 M787,29 v14 M661,155 h14 M661,155 v-14 M787,155 h-14 M787,155 v-14"/>
+        </g>
+        <text x="640" y="22" font-family="IBM Plex Mono" font-size="10" fill="#10303B" letter-spacing="1">DETECTION · CONF 0.91 · GEOLOCATED</text>
+        <text x="14" y="142" font-family="IBM Plex Mono" font-size="9" fill="#10303B" opacity=".65" letter-spacing="1.5">AERIAL SCENE — ILLUSTRATIVE</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<!-- ================= 1. MISSION NEED ================= -->
+<section id="need">
+  <div class="wrap rv">
+    <span class="eyebrow">1 · Mission need &amp; operational objective</span>
+    <h2>Why this system exists</h2>
+    <p class="sub">Coastal shark monitoring today depends on crewed aircraft, tethered balloons, or
+      manually piloted drones with a human watching live video. All three couple detection to a
+      person's continuous attention. The operational gap is <b style="color:var(--text)">persistence with
+      autonomous recognition</b>: an aircraft that searches efficiently, decides onboard when it has
+      found something, and changes its own behaviour to observe and report.</p>
+    <div class="grid3">
+      <div class="card"><span class="mono-h">OBJECTIVE 1 — COVER</span>
+        <p>Search a designated coastal area efficiently, biasing coverage toward where a target is
+        most likely, at energy-optimal loiter speeds.</p></div>
+      <div class="card"><span class="mono-h">OBJECTIVE 2 — RECOGNISE</span>
+        <p>Detect targets with an onboard neural detector; accumulate confidence across frames so a
+        single false frame never drives behaviour.</p></div>
+      <div class="card"><span class="mono-h">OBJECTIVE 3 — ACT &amp; REPORT</span>
+        <p>On a gated detection, transition autonomously to orbit-and-observe; log a geolocated,
+        time-stamped detection and relay a summary to the ground.</p></div>
+    </div>
+    <p style="margin-top:26px;font-size:.92rem;color:var(--muted)">The operator's role shifts from
+      <i>flying and watching</i> to <i>tasking and supervising</i>: define the area, launch, monitor
+      health, and act on detection reports. The aircraft is never dependent on the operator — or the
+      radio link — to make the search→track decision.</p>
+  </div>
+</section>
+
+<!-- ================= 1b. EXPLICIT DESIGN BASELINE (portfolio edition) ================= -->
+<section id="design">
+  <div class="wrap rv">
+    <span class="eyebrow">1b · Design baseline — explicit</span>
+    <h2>The contract before the code</h2>
+    <p class="sub">Frozen interface set (ADR-004/009, frozen 2026-05-31), exact state-transition
+      conditions, and the package decomposition. This is the part an integrator needs and a
+      brochure omits.</p>
+
+    <h3>Interface contract — six interfaces, frames and units fixed</h3>
+    <table>
+      <tr><th>Interface</th><th>Flow</th><th>Contents (frames per ADR-008: ENU/FLU, WGS-84 float64)</th></tr>
+      <tr><td class="mono">Detection.msg</td><td class="mono">perception &rarr; guidance, telemetry</td><td>class, confidence, image-frame bbox, geolocated lat/lon, timestamp</td></tr>
+      <tr><td class="mono">VehicleState.msg</td><td class="mono">autopilot &rarr; all packages</td><td>position, velocity, attitude, battery, VTOL phase — sole PX4 translation point (ADR-007)</td></tr>
+      <tr><td class="mono">SearchState.msg</td><td class="mono">guidance &rarr; mission, telemetry</td><td>current phase, probability-map summary, coverage, time-on-station</td></tr>
+      <tr><td class="mono">GuidanceSetpoint.msg</td><td class="mono">guidance &rarr; autopilot</td><td>target position/velocity or orbit centre+radius; yaw in ENU (0&nbsp;=&nbsp;East, CCW+)</td></tr>
+      <tr><td class="mono">MissionCommand.srv</td><td class="mono">operator/GCS &rarr; mission</td><td>start / stop / return, mission parameters</td></tr>
+      <tr><td class="mono">SetGuidanceMode.srv</td><td class="mono">mission &rarr; guidance</td><td>commanded mode: search / orbit / transit</td></tr>
+    </table>
+    <p class="note" style="margin-top:10px">AutopilotCommand.srv (arm/RTL/mode) deliberately deferred
+      to Phase 3 — designed alongside PX4 VehicleCommand semantics, not before them.</p>
+
+    <h3 style="margin-top:40px">State-transition conditions — exact</h3>
+    <table>
+      <tr><th>Transition</th><th>Condition</th><th>Owner</th></tr>
+      <tr><td class="mono">TRANSIT &rarr; SEARCH</td><td>Aircraft inside designated search-area boundary (on-station)</td><td class="mono">shark_isr_guidance</td></tr>
+      <tr><td class="mono">SEARCH &rarr; TRACK</td><td>Detection confidence &ge; &tau;, sustained over the gating window; confidence accumulates on consecutive detector hits and decays on misses <span class="badge b-plan">&tau; + window tuned in SITL — Phase 4</span></td><td class="mono">shark_isr_guidance</td></tr>
+      <tr><td class="mono">TRACK &rarr; SEARCH</td><td>Target lost beyond re-acquisition window, or observation objective met; probability map updated positively at the detection cell</td><td class="mono">shark_isr_guidance</td></tr>
+      <tr><td class="mono">any &rarr; RTL</td><td>Energy reserve threshold, mission end, or any PX4 failsafe (link loss, battery floor). Guidance hands over early by design; the autopilot enforces regardless</td><td class="mono">PX4 — cannot be overridden by companion</td></tr>
+    </table>
+
+    <h3 style="margin-top:40px">Package decomposition — one responsibility each</h3>
+    <table>
+      <tr><th>Package</th><th>Responsibility</th></tr>
+      <tr><td class="mono">shark_isr_interfaces</td><td>The message contract above — frozen before any node (ADR-004)</td></tr>
+      <tr><td class="mono">shark_isr_autopilot</td><td>Sole PX4 boundary: uXRCE-DDS primary, MAVLink fallback; all NED&harr;ENU / FRD&harr;FLU conversion (ADR-002/007/008)</td></tr>
+      <tr><td class="mono">shark_isr_perception</td><td>Camera Module 3 ingest &rarr; Hailo-8L .hef detector (onboard) &rarr; geolocated Detection</td></tr>
+      <tr><td class="mono">shark_isr_guidance</td><td>Bayesian search map, guidance state machine, orbit-on-detect, setpoint generation</td></tr>
+      <tr><td class="mono">shark_isr_mission</td><td>Phase sequencing, arbitration, degraded-state transitions</td></tr>
+      <tr><td class="mono">shark_isr_telemetry</td><td>Structured logging (flight, detection, decision) + GCS relay</td></tr>
+      <tr><td class="mono">shark_isr_bringup</td><td>Launch + aggregated parameters (config/ YAML, never hardcoded)</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 2. MISSION PROFILE (interactive) ================= -->
+<section id="profile" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">2 · Operational scenario — nominal mission</span>
+    <h2>Mission profile <span class="note">— select a phase or step through</span></h2>
+    <p class="sub">End-to-end nominal sortie. Vertical lift, tilt transition to wing-borne flight,
+      transit, probability-weighted search, detection-triggered track, return and vertical recovery.</p>
+
+    <svg class="mp-svg brkt" viewBox="0 0 960 300" role="img" aria-label="Mission profile: launch, transition, transit, search, track, return, land">
+      <!-- water / ground -->
+      <line x1="0" y1="262" x2="960" y2="262" stroke="#27394A" stroke-width="1.5"/>
+      <path d="M520,262 q12,-6 24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0 t24,0" stroke="#1C2933" fill="none"/>
+      <text class="mp-lab" x="14" y="280">LAUNCH SITE</text>
+      <text class="mp-lab" x="850" y="280">PATROL AREA (OVER WATER)</text>
+      <!-- profile segments; ids p0..p8 -->
+      <g class="mp-seg" data-p="0"><line class="ln" x1="40" y1="262" x2="40" y2="248" stroke="#5A7A94" stroke-width="2"/><circle cx="40" cy="255" r="5" fill="#5A7A94"/><line class="hit" x1="40" y1="262" x2="40" y2="240"/><text class="mp-lab" x="22" y="232">0 PRE-FLT</text></g>
+      <g class="mp-seg" data-p="1"><line class="ln" x1="70" y1="262" x2="70" y2="150" stroke="#5A7A94" stroke-width="2"/><line class="hit" x1="70" y1="262" x2="70" y2="150"/><text class="mp-lab" x="52" y="140">1 LAUNCH</text></g>
+      <g class="mp-seg" data-p="2"><path class="ln" d="M70,150 C100,118 130,108 168,104" stroke="#5A7A94" stroke-width="2" fill="none"/><path class="hit" d="M70,150 C100,118 130,108 168,104" fill="none"/><text class="mp-lab" x="92" y="96">2 TRANSITION</text></g>
+      <g class="mp-seg" data-p="3"><line class="ln" x1="168" y1="104" x2="380" y2="104" stroke="#5A7A94" stroke-width="2"/><line class="hit" x1="168" y1="104" x2="380" y2="104"/><text class="mp-lab" x="245" y="96">3 TRANSIT</text></g>
+      <g class="mp-seg" data-p="4"><path class="ln" d="M380,104 L430,84 L480,124 L530,84 L580,124 L630,84 L680,124" stroke="#45B8AC" stroke-width="2" fill="none"/><path class="hit" d="M380,104 L430,84 L480,124 L530,84 L580,124 L630,84 L680,124" fill="none"/><text class="mp-lab" x="498" y="66" fill="#45B8AC">4 SEARCH — BAYESIAN COVERAGE</text></g>
+      <g class="mp-seg" data-p="5"><circle class="ln" cx="734" cy="104" r="34" stroke="#E8A33D" stroke-width="2" fill="none"/><circle cx="734" cy="104" r="3.4" fill="#E8A33D"/><circle class="hit" cx="734" cy="104" r="40" fill="transparent"/><text class="mp-lab" x="700" y="52" fill="#E8A33D">5 DETECT &amp; TRACK</text></g>
+      <g class="mp-seg" data-p="6"><path class="ln" d="M734,138 C600,180 300,180 168,160" stroke="#5A7A94" stroke-width="2" fill="none"/><path class="hit" d="M734,138 C600,180 300,180 168,160" fill="none"/><text class="mp-lab" x="400" y="196">6 RETURN</text></g>
+      <g class="mp-seg" data-p="7"><path class="ln" d="M168,160 C130,170 100,200 86,230" stroke="#5A7A94" stroke-width="2" fill="none"/><path class="hit" d="M168,160 C130,170 100,200 86,230" fill="none"/><text class="mp-lab" x="108" y="214">7 TRANSITION</text></g>
+      <g class="mp-seg" data-p="8"><line class="ln" x1="86" y1="230" x2="86" y2="262" stroke="#5A7A94" stroke-width="2"/><line class="hit" x1="86" y1="226" x2="86" y2="262"/><text class="mp-lab" x="92" y="252">8 LAND</text></g>
+    </svg>
+
+    <div class="mp-panel brkt" id="mpPanel"></div>
+    <div class="stepper">
+      <button class="sbtn" id="mpPrev">&#8592; Prev phase</button>
+      <button class="sbtn primary" id="mpNext">Next phase &#8594;</button>
+    </div>
+    <!-- IMAGE SLOT: replace this block with real top-down drone captures (Phase 8) -->
+    <figure class="imgslot">
+      <span class="t">Aerial capture — placeholder</span>
+      <span class="s">Reserved for real top-down detection imagery from flight test · until then, all scenes are marked illustrative</span>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= 3. COMMAND & RESPONSIBILITY (interactive) ================= -->
+<section id="c2">
+  <div class="wrap rv">
+    <span class="eyebrow">3 · Command &amp; responsibility allocation</span>
+    <h2>Who does what, when</h2>
+    <p class="sub">Three layers share the mission: the operator (tasking &amp; supervision), the ROS 2
+      autonomy (outer-loop decisions), and the PX4 autopilot (flight-critical control). Select a
+      mission phase to see the allocation. The constant: <b style="color:var(--text)">the companion
+      computer is never in the safety-critical loop.</b></p>
+    <div class="c2-tabs" id="c2Tabs"></div>
+    <div class="c2-grid">
+      <div class="c2-col op"><h3>OPERATOR — GCS</h3><ul id="c2op"></ul></div>
+      <div class="c2-col ros"><h3>AUTONOMY — ROS 2</h3><ul id="c2ros"></ul></div>
+      <div class="c2-col px4"><h3>AUTOPILOT — PX4</h3><ul id="c2px4"></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. FAILSAFE (interactive) ================= -->
+<section id="failsafe" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">4 · Degraded &amp; emergency operations</span>
+    <h2>Failure-mode explorer</h2>
+    <p class="sub">Design rule: every loss degrades to an autopilot-handled safe state. Select a
+      failure to trace the response chain. <span class="badge b-plan">Failsafe behaviours verified in SITL — Phase 3</span></p>
+    <div class="fail-btns" id="failBtns"></div>
+    <div class="chain" id="failChain"></div>
+    <p class="fail-note note" id="failNote"></p>
+  </div>
+</section>
+
+<!-- ================= 5. COMMS & LINKS ================= -->
+<section id="comms">
+  <div class="wrap rv">
+    <span class="eyebrow">5 · Communications architecture</span>
+    <h2>Links — and what does <i>not</i> depend on them</h2>
+    <p class="sub">Three independent links connect aircraft and ground. The defining property of the
+      architecture: the detection→track decision loop is entirely onboard (highlighted) — link loss
+      degrades situational awareness, never autonomy.</p>
+    <svg class="cm-svg brkt" viewBox="0 0 900 330" role="img" aria-label="Comms architecture: onboard decision loop, telemetry, RC, and video links to ground">
+      <!-- aircraft zone -->
+      <rect x="30" y="30" width="540" height="200" fill="none" stroke="#27394A" stroke-dasharray="4 4"/>
+      <text class="cm-llab" x="42" y="22" fill="#5E7682">AIRCRAFT</text>
+      <!-- onboard decision loop highlight -->
+      <rect x="44" y="48" width="350" height="164" fill="rgba(14,124,134,.08)" stroke="#45B8AC" stroke-width="1.4"/>
+      <text class="cm-llab" x="56" y="42" fill="#45B8AC">ONBOARD DECISION LOOP — NO LINK DEPENDENCY</text>
+      <g class="cm-box"><rect x="60" y="64" width="150" height="54" rx="3"/><text x="72" y="86">Camera Mod 3</text><text class="sub" x="72" y="102">IMX708 · CSI-2</text></g>
+      <g class="cm-box"><rect x="60" y="142" width="150" height="54" rx="3"/><text x="72" y="164">Hailo-8L NPU</text><text class="sub" x="72" y="180">.hef detector · 13 TOPS</text></g>
+      <g class="cm-box"><rect x="240" y="100" width="140" height="60" rx="3"/><text x="252" y="124">ROS 2 guidance</text><text class="sub" x="252" y="140">state machine · Bayes map</text></g>
+      <g class="cm-box"><rect x="420" y="100" width="130" height="60" rx="3"/><text x="432" y="124">PX4 — 6C Mini</text><text class="sub" x="432" y="140">uXRCE-DDS · failsafes</text></g>
+      <path class="cm-link" d="M210,91 H225 V115 H240" stroke="#45B8AC"/>
+      <path class="cm-link" d="M210,169 H225 V145 H240" stroke="#45B8AC"/>
+      <path class="cm-link" d="M380,130 H420" stroke="#45B8AC"/>
+      <!-- ground zone -->
+      <rect x="640" y="30" width="230" height="270" fill="none" stroke="#27394A" stroke-dasharray="4 4"/>
+      <text class="cm-llab" x="652" y="22" fill="#5E7682">GROUND</text>
+      <g class="cm-box"><rect x="664" y="60" width="180" height="54" rx="3"/><text x="676" y="82">QGroundControl</text><text class="sub" x="676" y="98">mission monitor · health</text></g>
+      <g class="cm-box"><rect x="664" y="146" width="180" height="54" rx="3"/><text x="676" y="168">RC transmitter</text><text class="sub" x="676" y="184">FlySky — manual override</text></g>
+      <g class="cm-box"><rect x="664" y="230" width="180" height="54" rx="3"/><text x="676" y="252">Video monitor</text><text class="sub" x="676" y="268">operator awareness only</text></g>
+      <!-- links -->
+      <path class="cm-link" d="M550,114 C600,100 620,90 664,87" stroke="#5A7A94"/>
+      <text class="cm-llab" x="568" y="86" fill="#5A7A94">SiK 915 MHz — telemetry</text>
+      <path class="cm-link" d="M550,146 C600,160 620,168 664,173" stroke="#5A7A94"/>
+      <text class="cm-llab" x="576" y="186" fill="#5A7A94">RC link — pilot override</text>
+      <path class="cm-link" d="M394,196 C520,260 600,256 664,257" stroke="#E8A33D" stroke-dasharray="5 4"/>
+      <text class="cm-llab" x="470" y="276" fill="#E8A33D">GStreamer video — situational only, never in the loop</text>
+    </svg>
+    <p class="note" style="margin-top:12px">Loss of any link engages the corresponding PX4 failsafe
+      (Section 4). Detection events are logged onboard regardless of link state and relayed when the
+      link permits.</p>
+  </div>
+</section>
+
+<!-- ================= 6. PERFORMANCE ENVELOPE (interactive estimator) ================= -->
+<section id="envelope" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">6 · Performance envelope</span>
+    <h2>Endurance &amp; range estimator <span class="badge b-sim">First-cut planning only</span></h2>
+    <p class="sub">Interactive version of the platform-manual working. Cruise-only, still-air,
+      near-stock-weight — an optimistic upper bound by construction. Replace the efficiency figure
+      with the measured Wh/km after flight test.</p>
+    <div class="est">
+      <div class="ctrl brkt">
+        <label for="battSel">Battery</label>
+        <select id="battSel">
+          <option value="88.8">6S 4000 mAh LiPo — 88.8 Wh (manual option)</option>
+          <option value="181.4">6S2P 21700 Li-ion 8400 mAh — 181.4 Wh (manual option)</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <label for="battWh" id="customLabel" style="display:none">Custom capacity (Wh)</label>
+        <input type="number" id="battWh" value="88.8" min="10" max="400" step="0.1" style="display:none">
+        <label for="dod">Usable depth of discharge — <span id="dodV" class="mono" style="color:var(--bright)">80%</span></label>
+        <input type="range" id="dod" min="50" max="95" value="80">
+        <div class="rv2"><span>50%</span><span>95%</span></div>
+        <label for="eff">Cruise efficiency (Wh/km) — manual figure 2.2</label>
+        <input type="number" id="eff" value="2.2" min="0.5" max="10" step="0.1">
+        <label for="spd">Cruise speed — <span id="spdV" class="mono" style="color:var(--bright)">60 kph</span> (manual band 50–75)</label>
+        <input type="range" id="spd" min="50" max="75" value="60">
+        <div class="rv2"><span>50</span><span>75</span></div>
+      </div>
+      <div class="out brkt">
+        <div class="ok">ESTIMATED STILL-AIR RANGE</div>
+        <div class="big" id="rangeOut">—</div>
+        <div class="row"><span>Usable energy</span><b id="useOut">—</b></div>
+        <div class="row"><span>Endurance at cruise</span><b id="endOut">—</b></div>
+        <div class="row"><span>Radius (out-and-back, no loiter)</span><b id="radOut">—</b></div>
+        <div class="formula" id="formulaOut">range = (Wh × DoD) ÷ (Wh/km)</div>
+        <div class="caveat"><b>&#9888; BOUNDS, NOT PROMISES</b><br>
+          Excludes VTOL hover and hover&harr;cruise transitions (energy-expensive), ISR payload mass
+          effect on Wh/km, wind, loiter-on-station, and landing reserve. The 2.2 Wh/km figure is the
+          manufacturer's cruise value near stock weight. Measured flight data supersedes all of this.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7. DATA & LOGGING ================= -->
+<section id="data">
+  <div class="wrap rv">
+    <span class="eyebrow">7 · Data &amp; logging concept</span>
+    <h2>Everything is reconstructable</h2>
+    <p class="sub">The log set is a deliverable, not a by-product: any incident, decision, or
+      detection must be reconstructable after the fact from onboard records.</p>
+    <table>
+      <tr><th>Record</th><th>Producer</th><th>Contents</th></tr>
+      <tr><td>Flight log</td><td class="mono">PX4</td><td>Full vehicle state, modes, failsafe events (uLog)</td></tr>
+      <tr><td>Detection log</td><td class="mono">shark_isr_telemetry</td><td>Class, confidence, image-frame bbox, geolocated lat/lon (WGS-84), timestamp</td></tr>
+      <tr><td>Decision log</td><td class="mono">shark_isr_telemetry</td><td>Guidance state transitions with triggering condition and values (e.g. conf vs &tau;)</td></tr>
+      <tr><td>Search state</td><td class="mono">shark_isr_guidance</td><td>Probability-map snapshots, coverage, time-on-station</td></tr>
+      <tr><td>Operator summary</td><td class="mono">GCS relay</td><td>Detection reports + health, relayed when link permits</td></tr>
+    </table>
+    <p class="caveat" style="margin-top:18px"><b>&#9888; PRIVACY</b><br>
+      Coastal imagery can capture people and public spaces. Retention, access, and handling of
+      detection imagery are deliberate design items, separate from aviation regulation.</p>
+  </div>
+</section>
+
+<!-- ================= 8. REGULATORY ================= -->
+<section id="reg" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">8 · Regulatory &amp; operational constraints</span>
+    <h2>Operating context <span class="badge b-verify">&#9888; Verify with CASA before any flight</span></h2>
+    <div class="grid2">
+      <div class="card"><span class="mono-h">AVIATION (CASA)</span>
+        <p>RPA operation in Australia is governed by CASA; obligations depend on weight, location,
+        and recreational vs commercial/research purpose. Persistent over-water patrol trends toward
+        BVLOS, which carries specific approval requirements. Current category, registration,
+        accreditation/licensing, and area approvals must be confirmed against current CASA guidance
+        — none are asserted here.</p></div>
+      <div class="card"><span class="mono-h">DESIGN-FOR-COMPLIANCE</span>
+        <p>The stack is built to make compliant operation easy rather than to enforce regulation:
+        geofence and RTL configured and verified in the autopilot (not assumed), the companion
+        computer architecturally unable to override a failsafe, and logging sufficient to
+        reconstruct any incident.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>CONOPS-001 · DRAFT · 2026-06-11 · Ryan H. — QUT Electrical &amp; Aerospace Engineering.<br>
+    Platform figures from Titan Dynamics Hornet manual Rev 1.1; architecture from the project
+    decision log. Interactive elements are concept demonstrations and planning aids — not flight
+    data. Items marked &#9888; require external verification.</p>
+  </div>
+</footer>
+
+<script>
+/* reveal */
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.07});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+
+/* ============ MISSION PROFILE — edit phase copy here ============ */
+const PHASES=[
+{n:'0 · PRE-FLIGHT',own:'Operator',d:'Operator defines the patrol area and mission parameters at the GCS; pre-flight checks; autonomy stack health verified; geofence and failsafe config confirmed in the autopilot.',c:'All links up',e:'Full battery'},
+{n:'1 · VTOL LAUNCH',own:'Autopilot',d:'Vertical lift under PX4 multicopter control. Front motors vertical. Operator supervises; RC override available throughout.',c:'Telemetry + RC',e:'High draw — hover'},
+{n:'2 · TILT TRANSITION',own:'Autopilot',d:'PX4 executes the hover-to-cruise transition: front motors tilt forward, wing takes the load. The autonomy layer does not participate — transition control is firmware-owned by design (ADR-003).',c:'Telemetry + RC',e:'High draw — transient'},
+{n:'3 · TRANSIT',own:'Autonomy (route) / Autopilot (flight)',d:'Wing-borne cruise to the patrol area. Guidance is armed but passive; mission manager sequences the phase. Camera and detector come up and self-check.',c:'Telemetry; video optional',e:'Cruise — ~2.2 Wh/km class (manual figure)'},
+{n:'4 · SEARCH',own:'Autonomy',d:'Probability-weighted coverage near best-L/D. Each null observation applies the Bayes update to seen cells; guidance steers toward maximum expected detection gain. Confidence accumulates only on detector hits.',c:'Links optional — decisions onboard',e:'Most efficient phase — loiter speeds'},
+{n:'5 · DETECT & TRACK',own:'Autonomy',d:'Confidence crosses τ sustained over the gating window → autonomous SEARCH→TRACK transition. Aircraft orbits the geolocated detection, logs it (position, confidence, time), relays a report if the link permits, and updates the probability map positively.',c:'Report relayed when link allows',e:'Orbit draw slightly above cruise'},
+{n:'6 · RESUME / RETURN',own:'Autonomy → Autopilot',d:'Observation objective met (or target lost beyond re-acquisition): return to SEARCH, or — on energy reserve / mission end — hand to RTL. Safety transitions are autopilot-owned and cannot be overridden by the companion computer.',c:'Telemetry',e:'Reserve margin enforced'},
+{n:'7 · TILT TRANSITION (REVERSE)',own:'Autopilot',d:'Cruise-to-hover transition on arrival at the recovery point. Firmware-owned, as on departure.',c:'Telemetry + RC',e:'High draw — transient'},
+{n:'8 · VTOL LAND & POST-FLIGHT',own:'Autopilot / Operator',d:'Vertical recovery under PX4 control. Operator secures the aircraft; logs (flight, detection, decision, search-state) are pulled for review — the mission is reconstructable end-to-end.',c:'All links',e:'Mission complete'}];
+let mpIdx=4;
+const mpPanel=document.getElementById('mpPanel');
+function mpShow(i){
+  mpIdx=(i+PHASES.length)%PHASES.length;
+  document.querySelectorAll('.mp-seg').forEach(s=>s.classList.toggle('active',+s.dataset.p===mpIdx));
+  const p=PHASES[mpIdx];
+  mpPanel.innerHTML='<h3>'+p.n+'<span class="badge b-plan">Design intent — SITL/flight pending</span></h3>'+
+   '<p style="font-size:.9rem;color:#5E7682;margin-top:6px">'+p.d+'</p>'+
+   '<div class="mp-kv">'+
+   '<div><div class="k">Primary owner</div><div class="v">'+p.own+'</div></div>'+
+   '<div><div class="k">Comms state</div><div class="v">'+p.c+'</div></div>'+
+   '<div><div class="k">Energy note</div><div class="v">'+p.e+'</div></div></div>';
+}
+document.querySelectorAll('.mp-seg').forEach(s=>{
+  s.addEventListener('click',()=>mpShow(+s.dataset.p));
+});
+document.getElementById('mpPrev').addEventListener('click',()=>mpShow(mpIdx-1));
+document.getElementById('mpNext').addEventListener('click',()=>mpShow(mpIdx+1));
+mpShow(4);
+
+/* ============ C2 MATRIX — edit allocations here ============ */
+const C2={
+'Pre-flight':{op:['Define patrol area + mission parameters','Pre-flight checks; confirm geofence/failsafe config','Go/no-go decision'],ros:['Stack self-check; interfaces nominal','Load search prior / probability map'],px4:['Sensor + GPS health','Arming checks']},
+'Launch & transition':{op:['Supervise; RC override available','Abort authority'],ros:['Passive — armed, monitoring'],px4:['Vertical lift control','Hover↔cruise tilt transition','All failsafes active']},
+'Transit':{op:['Monitor telemetry + health'],ros:['Sequence mission phase; route to area','Camera + detector bring-up'],px4:['Wing-borne flight control','Track commanded route']},
+'Search':{op:['Supervise; receive coverage status'],ros:['Bayesian map updates per observation','Steer to max expected detection gain','Accumulate detection confidence'],px4:['Fly offboard setpoints','Failsafe supervision']},
+'Track':{op:['Receive detection report','Optional: re-task or end mission'],ros:['Gated SEARCH→TRACK transition (conf ≥ τ)','Orbit geometry; log geolocated detection'],px4:['Fly orbit setpoints','Energy/failsafe authority retained']},
+'Return & recovery':{op:['Clear recovery area; secure aircraft','Pull logs for review'],ros:['Hand mission end to autopilot','Final log flush'],px4:['RTL; reverse transition; vertical landing']}};
+const tabs=document.getElementById('c2Tabs');
+Object.keys(C2).forEach((k,i)=>{
+  const b=document.createElement('button');b.className='c2-tab'+(i===3?' on':'');b.textContent=k;
+  b.addEventListener('click',()=>{document.querySelectorAll('.c2-tab').forEach(t=>t.classList.remove('on'));b.classList.add('on');c2Show(k)});
+  tabs.appendChild(b);
+});
+function c2Show(k){
+  const d=C2[k];
+  document.getElementById('c2op').innerHTML=d.op.map(x=>'<li>'+x+'</li>').join('');
+  document.getElementById('c2ros').innerHTML=d.ros.map(x=>'<li>'+x+'</li>').join('');
+  document.getElementById('c2px4').innerHTML=d.px4.map(x=>'<li>'+x+'</li>').join('');
+}
+c2Show('Search');
+
+/* ============ FAILURE EXPLORER — edit modes here ============ */
+const FAILS={
+'Companion computer loss':{
+ chain:[['Event','ROS 2 stack or Pi 5 power/compute lost mid-mission'],
+        ['Detection','PX4 offboard setpoint stream times out'],
+        ['Response','PX4 offboard failsafe → Hold / RTL per configuration'],
+        ['End state','Autopilot-controlled recovery — autonomy was never safety-critical']],
+ note:'The architectural point: the companion computer commands, it never controls. Its death is an inconvenience, not an emergency.'},
+'Telemetry link loss':{
+ chain:[['Event','SiK 915 MHz link to GCS lost'],
+        ['Detection','PX4 datalink-loss monitor'],
+        ['Response','PX4 link-loss failsafe → RTL/loiter as configured'],
+        ['End state','Aircraft recovers itself; detections already logged onboard']],
+ note:'Onboard autonomy is unaffected by link state — only the operator\u2019s view degrades.'},
+'RC link loss':{
+ chain:[['Event','Manual-override RC link lost'],
+        ['Detection','PX4 RC-loss monitor'],
+        ['Response','Per failsafe config: continue mission (if permitted) or RTL'],
+        ['End state','Autopilot-handled; override restored when link returns']],
+ note:'RC is the human\u2019s hand on the aircraft; its loss triggers a deliberate, configured response — never ambiguity.'},
+'Low battery':{
+ chain:[['Event','Battery reaches reserve threshold'],
+        ['Detection','PX4 battery monitor (and guidance energy gate upstream)'],
+        ['Response','Guidance hands to RTL early; PX4 battery failsafe is the hard backstop'],
+        ['End state','Recovery with reserve margin; mission logs intact']],
+ note:'Two layers watch energy: guidance retreats early by design; PX4 enforces the floor regardless.'},
+'Detector degraded':{
+ chain:[['Event','Detector throughput drops or confidence quality degrades (e.g. thermal throttling)'],
+        ['Detection','Perception health monitoring; mission manager surfaced state'],
+        ['Response','Continue coverage with degraded-state flagged; operator advised; no false transitions (gate unchanged)'],
+        ['End state','Mission continues or operator ends it — flight safety never involved']],
+ note:'A blind aircraft is still a safe aircraft. Perception failures degrade the mission, not the flight.'}};
+const fb=document.getElementById('failBtns'),fc=document.getElementById('failChain'),fn=document.getElementById('failNote');
+Object.keys(FAILS).forEach((k,i)=>{
+  const b=document.createElement('button');b.className='fbtn'+(i===0?' on':'');b.textContent=k;
+  b.addEventListener('click',()=>{document.querySelectorAll('.fbtn').forEach(t=>t.classList.remove('on'));b.classList.add('on');failShow(k)});
+  fb.appendChild(b);
+});
+function failShow(k){
+  const d=FAILS[k];
+  fc.innerHTML=d.chain.map((p,i)=>'<div class="node'+(i===d.chain.length-1?' safe':'')+'"><span class="k">'+p[0]+'</span><p>'+p[1]+'</p></div>').join('');
+  fn.textContent=d.note;
+}
+failShow('Companion computer loss');
+
+/* ============ ENDURANCE ESTIMATOR ============ */
+const $=id=>document.getElementById(id);
+function est(){
+  const sel=$('battSel').value;
+  const wh=sel==='custom'?parseFloat($('battWh').value)||0:parseFloat(sel);
+  $('customLabel').style.display=$('battWh').style.display=sel==='custom'?'block':'none';
+  const dod=parseInt($('dod').value)/100;
+  const eff=parseFloat($('eff').value)||2.2;
+  const spd=parseInt($('spd').value);
+  $('dodV').textContent=Math.round(dod*100)+'%';
+  $('spdV').textContent=spd+' kph';
+  const use=wh*dod, range=use/eff, endu=range/spd;
+  $('useOut').textContent=use.toFixed(1)+' Wh';
+  $('rangeOut').textContent='\u2248 '+range.toFixed(0)+' km';
+  $('endOut').textContent='\u2248 '+(endu*60).toFixed(0)+' min ('+endu.toFixed(1)+' h)';
+  $('radOut').textContent='\u2248 '+(range/2).toFixed(0)+' km';
+  $('formulaOut').textContent='range = ('+wh.toFixed(1)+' Wh \u00D7 '+Math.round(dod*100)+'%) \u00F7 '+eff+' Wh/km = '+range.toFixed(1)+' km';
+}
+['battSel','battWh','dod','eff','spd'].forEach(id=>$(id).addEventListener('input',est));
+est();
+</script>
+</body>
+</html>

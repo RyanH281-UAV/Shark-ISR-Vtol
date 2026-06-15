@@ -6,12 +6,14 @@ expected outputs are derivable by hand.  No ROS or simulator required.
 
 Camera: 640×480, fx=fy=616, cx=320, cy=240.
 Camera mount: nadir (straight down), image top = body +x (forward).
-Frame: ENU world → body FLU quaternion (ROS 2 REP-103).
+Frame: body FLU → ENU world quaternion (standard ROS orientation, REP-103),
+matching what shark_isr_autopilot publishes in VehicleState.attitude_q.
 
 Quaternion conventions:
-  q = (qx, qy, qz, qw)
-  Heading East  (body +x = ENU +x): q = (0, 0, 0, 1)   — identity
-  Heading North (body +x = ENU +y): q = (0, 0, -√½, √½) — Rz(-90°) world→body
+  q = (qx, qy, qz, qw), body→world
+  Heading East  (body +x = ENU +x): q = (0, 0, 0, 1)    — identity
+  Heading North (body +x = ENU +y): q = (0, 0, +√½, √½) — Rz(+90°) body→world
+  Roll +20° heading East:           q = (sin10°, 0, 0, cos10°)
 
 Tolerance: 0.5 m for position, 5 m for position_std_m.
 """
@@ -30,9 +32,12 @@ from shark_isr_perception.geolocate import geolocate  # noqa: E402
 # Shared camera intrinsics
 CAM = dict(img_w=640, img_h=480, fx=616.0, fy=616.0, cx=320.0, cy=240.0)
 
-# Quaternions (qx, qy, qz, qw)
+# Quaternions (qx, qy, qz, qw) — body FLU → ENU world
 Q_EAST = (0.0, 0.0, 0.0, 1.0)                                  # heading East  (identity)
-Q_NORTH = (0.0, 0.0, -math.sqrt(0.5), math.sqrt(0.5))         # heading North
+Q_NORTH = (0.0, 0.0, math.sqrt(0.5), math.sqrt(0.5))           # heading North (Rz +90°)
+# Roll +20° about body +x while heading East (left wing up, camera looks North)
+_HALF_ROLL = math.radians(20.0) / 2.0
+Q_ROLL20_EAST = (math.sin(_HALF_ROLL), 0.0, 0.0, math.cos(_HALF_ROLL))
 
 
 def _m_to_deg_lat(metres: float) -> float:
@@ -123,6 +128,57 @@ def test_below_centre_heading_east():
     assert abs(lon - expected_dlon) < _m_to_deg_lon(0.5, 0.0), (
         f"Expected lon≈{expected_dlon:.6f} ({expected_east_m:.1f} m East), got {lon:.6f}"
     )
+
+
+# ── Test 3b: convention-sensitive — heading North, detection right of centre ──
+
+def test_right_of_centre_heading_north():
+    """
+    Heading North (body x = ENU +y): image right = body -y = East.
+    A yaw-only quaternion with a nadir centre ray cannot distinguish
+    body→world from world→body; this off-centre case can.
+    Detection at (0.75, 0.5): ray_body = [0, -160/616, -1].
+    Rz(+90°) body→world: (x, y, z) → (-y, x, z) → [+0.2597, 0, -1] = East.
+    Expected: ≈7.79 m EAST of vehicle, zero north offset.
+    """
+    lat, lon, std = geolocate(
+        bbox_cx_norm=0.75, bbox_cy_norm=0.5,
+        **CAM,
+        vehicle_lat_deg=0.0, vehicle_lon_deg=0.0,
+        agl_m=30.0,
+        attitude_qxyzw=Q_NORTH,
+    )
+    expected_east_m = 30.0 * (160.0 / 616.0)   # ≈ 7.79 m
+    expected_dlon = _m_to_deg_lon(expected_east_m, 0.0)
+    assert abs(lon - expected_dlon) < _m_to_deg_lon(0.5, 0.0), (
+        f"Expected lon≈{expected_dlon:.6f} ({expected_east_m:.1f} m East), got {lon:.6f}"
+    )
+    assert abs(lat) < _m_to_deg_lat(0.5), f"Expected lat≈0, got {lat}"
+
+
+# ── Test 3c: convention-sensitive — 20° roll, centre bbox ─────────────────────
+
+def test_roll_20deg_centre_bbox():
+    """
+    Heading East with +20° roll (left wing up): camera bore tilts North.
+    ray_body = [0, 0, -1]; Rx(+20°) body→world → [0, +sin20°, -cos20°].
+    t = 30/cos20°; north offset = t·sin20° = 30·tan20° ≈ 10.92 m NORTH.
+    The world→body (conjugate) interpretation gives -10.92 m — this test
+    locks in the body→world convention.
+    """
+    lat, lon, std = geolocate(
+        bbox_cx_norm=0.5, bbox_cy_norm=0.5,
+        **CAM,
+        vehicle_lat_deg=0.0, vehicle_lon_deg=0.0,
+        agl_m=30.0,
+        attitude_qxyzw=Q_ROLL20_EAST,
+    )
+    expected_north_m = 30.0 * math.tan(math.radians(20.0))   # ≈ 10.92 m
+    expected_dlat = _m_to_deg_lat(expected_north_m)
+    assert abs(lat - expected_dlat) < _m_to_deg_lat(0.5), (
+        f"Expected lat≈{expected_dlat:.6f} (≈{expected_north_m:.1f} m North), got {lat:.6f}"
+    )
+    assert abs(lon) < _m_to_deg_lon(0.5, 0.0), f"Expected lon≈0, got {lon}"
 
 
 # ── Test 4: AGL scales offset linearly ───────────────────────────────────────
