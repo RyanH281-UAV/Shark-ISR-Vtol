@@ -145,10 +145,14 @@ class MissionNode(Node):
             return
         if self._phase in (MissionPhase.IDLE, MissionPhase.LANDED, MissionPhase.RETURNING):
             return
-        if self._vehicle.battery_fraction > 0.0 and \
-                self._vehicle.battery_fraction < self._low_batt_thresh:
+        # Trigger on a finite, in-range reading below threshold. math.isfinite
+        # rejects NaN (estimator not converged — nan<thresh is False anyway, but
+        # the explicit guard documents intent); >=0.0 includes a genuine 0% while
+        # rejecting the bridge's -1.0 "no battery msg" sentinel.
+        frac = self._vehicle.battery_fraction
+        if math.isfinite(frac) and 0.0 <= frac < self._low_batt_thresh:
             self.get_logger().warn(
-                f'LOW BATTERY ({self._vehicle.battery_fraction:.0%}) → triggering return')
+                f'LOW BATTERY ({frac:.0%}) → triggering return')
             self._low_battery_triggered = True
             self._trigger_return()
 
@@ -246,6 +250,14 @@ class MissionNode(Node):
 
     def _start_mission(self) -> None:
         """ARM → OFFBOARD → TRANSIT."""
+        # Reject start without a valid position estimate: _latlondelta_to_enu would
+        # silently return the ENU origin (0,0), making the vehicle arm and "transit"
+        # to home instead of the requested search area.
+        if self._vehicle is None or not self._vehicle.position_valid:
+            self.get_logger().error(
+                'CMD_START rejected: no valid vehicle position yet — '
+                'cannot compute transit target (would default to ENU origin).')
+            return
         self._set_phase(MissionPhase.STARTING)
         self._call_ap(AutopilotCommand.Request.CMD_ARM,
                       done_cb=self._on_arm_response)

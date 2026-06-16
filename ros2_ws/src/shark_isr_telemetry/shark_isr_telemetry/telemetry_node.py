@@ -92,7 +92,7 @@ class TelemetryNode(Node):
         self.create_subscription(
             SearchState, 'search_state', self._cb_search_state, 10)
         self.create_subscription(
-            Detection, 'detections', self._cb_detection, 10)
+            Detection, 'detection', self._cb_detection, 10)
 
         # ── Publisher ──────────────────────────────────────────────────────────
         self._pub_summary = self.create_publisher(String, 'telemetry_summary', 10)

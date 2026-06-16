@@ -268,6 +268,22 @@ class DetectorNode(Node):
             det.position_std_m = 0.0
             return
 
+        # geolocate() requires NORMALISED bbox centre [0,1] (Detection.msg contract).
+        # The Hailo parser (_hailo_forward) is a placeholder; many YOLO/.hef exports
+        # emit pixel coords (0..640). If that lands here it would double-scale by img_w
+        # and geolocate silently wrong. Reject loudly instead — normalise upstream.
+        if not (0.0 <= bbox_cx_norm <= 1.0 and 0.0 <= bbox_cy_norm <= 1.0):
+            self.get_logger().error(
+                f"bbox centre not normalised ({bbox_cx_norm:.3f}, {bbox_cy_norm:.3f}); "
+                "expected [0,1] per Detection.msg — check _hailo_forward output scaling."
+            )
+            det.geo_valid = False
+            det.latitude_deg = 0.0
+            det.longitude_deg = 0.0
+            det.altitude_amsl_m = 0.0
+            det.position_std_m = 0.0
+            return
+
         q = vs.attitude_q
         attitude_qxyzw = (q.x, q.y, q.z, q.w)
 
