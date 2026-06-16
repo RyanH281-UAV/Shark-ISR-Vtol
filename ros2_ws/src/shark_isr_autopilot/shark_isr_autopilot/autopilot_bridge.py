@@ -45,7 +45,6 @@ from .frame_transforms import (
     att_ned_frd_to_enu_flu,
     enu_to_ned,
     ned_to_enu,
-    quat_to_yaw_ned,
     yaw_enu_to_ned,
 )
 
@@ -257,6 +256,14 @@ class AutopilotBridge(Node):
             if warmed_up and retry_due:
                 self._send_mode(self._MAIN_OFFBOARD)
                 self._last_mode_switch_at = now
+
+    _VTOL_STATE_MAP: dict = {
+        0: VehicleState.VTOL_PHASE_UNDEFINED,
+        1: VehicleState.VTOL_PHASE_TRANS_TO_FW,
+        2: VehicleState.VTOL_PHASE_TRANS_TO_MC,
+        3: VehicleState.VTOL_PHASE_HOVER,
+        4: VehicleState.VTOL_PHASE_FIXED_WING,
+    }
 
     # Lead angle for the synthesised orbit: the position target stays this far
     # ahead of the vehicle on the circle, producing continuous tangential motion.
@@ -484,17 +491,8 @@ class AutopilotBridge(Node):
 
     @staticmethod
     def _map_vtol_phase(px4_state: int) -> int:
-        """Map PX4 vtol_vehicle_state to VehicleState VTOL_PHASE_* constant."""
-        # PX4 VtolVehicleStatus.vehicle_vtol_state values (PX4 v1.16):
-        # 0=UNDEFINED, 1=TRANSITION_TO_FW, 2=TRANSITION_TO_MC, 3=MC, 4=FW
-        _map = {
-            0: VehicleState.VTOL_PHASE_UNDEFINED,
-            1: VehicleState.VTOL_PHASE_TRANS_TO_FW,
-            2: VehicleState.VTOL_PHASE_TRANS_TO_MC,
-            3: VehicleState.VTOL_PHASE_HOVER,
-            4: VehicleState.VTOL_PHASE_FIXED_WING,
-        }
-        return _map.get(px4_state, VehicleState.VTOL_PHASE_UNDEFINED)
+        """Map PX4 vtol_vehicle_state (PX4 v1.16) to VehicleState VTOL_PHASE_* constant."""
+        return AutopilotBridge._VTOL_STATE_MAP.get(px4_state, VehicleState.VTOL_PHASE_UNDEFINED)
 
 
 def main(args=None) -> None:

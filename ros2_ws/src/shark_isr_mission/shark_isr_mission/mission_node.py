@@ -17,12 +17,14 @@ automated transitions and failsafes.
 """
 
 import math
+import time
 from enum import IntEnum
 
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
 
+from geometry_msgs.msg import Point
 from shark_isr_interfaces.msg import SearchState, VehicleState
 from shark_isr_interfaces.srv import AutopilotCommand, MissionCommand, SetGuidanceMode
 
@@ -157,7 +159,6 @@ class MissionNode(Node):
             self._trigger_return()
 
     def _check_phase_timeouts(self) -> None:
-        import time
         elapsed = time.monotonic() - self._phase_start
         if self._phase == MissionPhase.STARTING:
             if elapsed > self._arm_timeout:
@@ -292,7 +293,6 @@ class MissionNode(Node):
         # Transit target: above search area centre at transit altitude.
         # Flat-earth ENU offset from home (guidance does the same conversion).
         te, tn = self._latlondelta_to_enu(self._search_lat, self._search_lon)
-        from geometry_msgs.msg import Point
         req.transit_target_enu_m = Point(x=te, y=tn, z=self._transit_alt)
         future = self._cli_gd.call_async(req)
         future.add_done_callback(self._on_transit_response)
@@ -312,7 +312,6 @@ class MissionNode(Node):
         self._set_phase(MissionPhase.SEARCHING)
         req = SetGuidanceMode.Request()
         req.mode = SetGuidanceMode.Request.MODE_SEARCH
-        from geometry_msgs.msg import Point
         te, tn = self._latlondelta_to_enu(self._search_lat, self._search_lon)
         req.search_centre_enu_m = Point(x=te, y=tn, z=0.0)
         req.search_radius_m = self._search_radius
@@ -352,7 +351,6 @@ class MissionNode(Node):
     # ── Utilities ────────────────────────────────────────────────────────────
 
     def _set_phase(self, phase: MissionPhase) -> None:
-        import time
         self._phase = phase
         self._phase_start = time.monotonic()
         self.get_logger().info(f'Mission phase → {phase.name}')

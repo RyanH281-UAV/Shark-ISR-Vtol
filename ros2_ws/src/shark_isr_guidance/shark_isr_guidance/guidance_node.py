@@ -41,9 +41,6 @@ from .search_pattern import (
     distance_to_waypoint,
 )
 
-import numpy as _np  # noqa: F401 — available in ROS 2 Humble Python env
-
-
 class GuidanceNode(Node):
     """Guidance layer: search pattern, Bayesian map, detection-triggered orbit."""
 
@@ -187,8 +184,7 @@ class GuidanceNode(Node):
         # Latch the hold target on first call so the setpoint doesn't follow the
         # vehicle as it drifts.
         if self._hold_target is None:
-            alt = self._vehicle.position_enu_m.z if self._vehicle else 0.0
-            self._hold_target = (pos_e, pos_n, alt)
+            self._hold_target = (pos_e, pos_n, self._vehicle.position_enu_m.z)
         he, hn, hu = self._hold_target
         sp = GuidanceSetpoint()
         sp.header = self._header()

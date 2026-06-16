@@ -48,11 +48,10 @@ def yaw_ned_to_enu(yaw_ned: float) -> float:
 
 
 def _wrap_pi(angle: float) -> float:
-    """Wrap angle to (−π, π]."""
-    while angle > math.pi:
+    """Wrap angle to (-π, π]."""
+    angle = angle % (2.0 * math.pi)
+    if angle > math.pi:
         angle -= 2.0 * math.pi
-    while angle <= -math.pi:
-        angle += 2.0 * math.pi
     return angle
 
 
@@ -118,10 +117,3 @@ def att_enu_flu_to_ned_frd(w: float, x: float, y: float, z: float) -> tuple[floa
     return q_ned_frd
 
 
-def quat_to_yaw_ned(w: float, x: float, y: float, z: float) -> float:
-    """Extract NED yaw (0=North, CW+) [rad] from a NED/FRD quaternion."""
-    # Yaw from quaternion: atan2(2(wy+xz), 1-2(y²+z²))  [NED convention, CW+]
-    # but for NED/FRD: atan2(2(wz+xy), 1-2(y²+z²)) is the standard formula
-    siny_cosp = 2.0 * (w * z + x * y)
-    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-    return math.atan2(siny_cosp, cosy_cosp)

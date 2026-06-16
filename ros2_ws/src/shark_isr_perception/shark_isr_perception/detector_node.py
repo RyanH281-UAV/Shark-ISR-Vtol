@@ -186,9 +186,6 @@ class DetectorNode(Node):
             return
 
         for bbox, conf in detections:
-            if conf < self._conf_thresh:
-                continue
-
             det = Detection()
             det.header = msg.header
             det.object_class = Detection.CLASS_SHARK
@@ -211,8 +208,6 @@ class DetectorNode(Node):
 
     def _hailo_forward(self, frame: np.ndarray) -> list:
         """Run HailoRT inference; return list of (bbox_norm, confidence)."""
-        import numpy as np  # noqa: F811
-
         # Resize to model input (640×640 with letterboxing)
         try:
             import cv2  # type: ignore

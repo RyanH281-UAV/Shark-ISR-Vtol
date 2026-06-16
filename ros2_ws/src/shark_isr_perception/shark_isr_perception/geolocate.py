@@ -28,7 +28,6 @@ Lat/lon delta: flat-earth approximation valid for offsets ≲ 1 km.
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 import numpy as np
 
@@ -66,8 +65,8 @@ def geolocate(
     vehicle_lat_deg: float,
     vehicle_lon_deg: float,
     agl_m: float,
-    attitude_qxyzw: Tuple[float, float, float, float],
-) -> Tuple[float, float, float]:
+    attitude_qxyzw: tuple[float, float, float, float],
+) -> tuple[float, float, float]:
     """Return (lat_deg, lon_deg, position_std_m) for a detected bounding-box centre.
 
     Parameters
