@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/* ============================================================
+   DESIGN TOKENS — warm-paper editorial / engineering-memo voice
+   Fraunces (serif display) · IBM Plex Sans (body) · IBM Plex Mono (data)
+   ============================================================ */
+@theme {
+  --color-bg: #f4f1e8;          /* warm paper */
+  --color-surface: #fbf9f2;     /* card / panel */
+  --color-ink: #1b1812;         /* warm near-black text */
+  --color-primary: #12100b;     /* headings */
+  --color-secondary: #4c473c;   /* muted body */
+  --color-faint: #837b6b;       /* labels */
+  --color-line: #e1dac9;        /* hairline */
+  --color-line2: #cfc6b1;
+  --color-accent: #1d4ed8;      /* ink blue */
+  --color-accent-soft: #e8edfb;
+  --color-ink-panel: #12130f;   /* dark sections */
+
+  /* status colors — FSM states */
+  --color-transit: #6b7280;
+  --color-search: #1d4ed8;
+  --color-track: #b45309;
+  --color-rtl: #b91c1c;
+  --color-ok: #15803d;
+
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), monospace;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01";
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-optical-sizing: auto;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* status indicator blink */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
