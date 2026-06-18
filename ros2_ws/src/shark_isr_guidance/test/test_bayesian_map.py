@@ -7,6 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from shark_isr_guidance.bayesian_map import BayesianSearchMap
+from shark_isr_guidance.search_pattern import SearchRegion
 
 TOL = 1e-9
 
@@ -123,3 +124,65 @@ def test_repeated_sweeps_and_detection():
     # Normalised.
     total = sum(bm.probability(r, c) for r, c in bm._cells)
     assert abs(total - 1.0) < 1e-6
+
+
+# ── staleness clock + re-growth (ADR-013) ─────────────────────────────────────
+
+def test_decay_ages_cells():
+    bm = _uniform_map()
+    assert bm.max_cell_age_s() == 0.0
+    bm.decay_observation(dt_s=10.0, alpha=0.001)
+    assert abs(bm.max_cell_age_s() - 10.0) < TOL
+    bm.decay_observation(dt_s=5.0, alpha=0.001)
+    assert abs(bm.max_cell_age_s() - 15.0) < TOL
+
+
+def test_null_observation_resets_age():
+    bm = _uniform_map()
+    bm.decay_observation(dt_s=50.0, alpha=0.001)          # all cells age 50
+    bm.null_observation(0.0, 0.0, footprint_radius_m=25.0)  # sweep origin
+    r, c = bm._world_to_cell(0.0, 0.0)
+    assert bm.cell_age_s(r, c) == 0.0                      # origin observed → reset
+    assert bm.max_cell_age_s() == 50.0                    # outer cells still stale
+
+
+def test_oldest_unobserved_cell_is_stale_and_far():
+    bm = _uniform_map()
+    bm.decay_observation(dt_s=100.0, alpha=0.001)          # everything stale
+    bm.null_observation(50.0, 0.0, footprint_radius_m=20.0)  # refresh near (50,0)
+    e, n = bm.oldest_unobserved_cell_centre()
+    # The stalest cell must NOT be one we just refreshed.
+    assert math.sqrt((e - 50.0) ** 2 + n ** 2) > 20.0
+    assert bm.max_cell_age_s() == 100.0
+
+
+def test_probability_regrowth_after_clear():
+    bm = _uniform_map()
+    bm.null_observation(0.0, 0.0, footprint_radius_m=20.0, p_detection=0.9)
+    r, c = bm._world_to_cell(0.0, 0.0)
+    p_cleared = bm.probability(r, c)
+    bm.decay_observation(dt_s=600.0, alpha=0.01)           # large alpha*dt: must not overshoot
+    p_regrown = bm.probability(r, c)
+    p_uniform = 1.0 / len(bm._cells)
+    assert p_regrown > p_cleared                           # cleared cell rises again
+    # ...toward the prior, never PAST it. Euler step inverted the map here.
+    assert p_regrown <= p_uniform + TOL
+
+
+def test_highest_scoring_cell_uses_weights():
+    bm = _uniform_map()                                    # uniform → all P equal
+    r, c = bm._world_to_cell(40.0, 40.0)
+    e_t, n_t = bm._cell_centre(r, c)
+    best_e, best_n = bm.highest_scoring_cell(weights={(r, c): 10.0})
+    assert abs(best_e - e_t) < TOL and abs(best_n - n_t) < TOL
+
+
+# ── strip region ──────────────────────────────────────────────────────────────
+
+def test_strip_region_cells_inside_strip():
+    region = SearchRegion(0.0, 0.0, 300.0, 100.0, 0.5, 50.0)
+    bm = BayesianSearchMap(0.0, 0.0, 1.0, cell_size_m=10.0, region=region)
+    assert len(bm._cells) > 0
+    for r, c in bm._cells:
+        ce, cn = bm._cell_centre(r, c)
+        assert region.contains(ce, cn)
