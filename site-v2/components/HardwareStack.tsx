@@ -45,7 +45,7 @@ const PARTS: Record<PartId, Part> = {
     accent: "#f59e0b",
     specs: [
       "PCIe Gen 3 via the M.2 HAT+",
-      "HailoRT runtime, YOLOv8s compiled to .hef",
+      "HailoRT runtime, YOLOv8n compiled to .hef",
       "Inference runs onboard — no video downlink",
     ],
     flag: "Thermal: sustained inference in a sealed LW-PLA fuselage throttles without active cooling.",

@@ -17,7 +17,7 @@ const STATES: State[] = ["TRANSIT", "SEARCH", "SCAN", "TRACK"];
 // "how it was achieved" — one line per state, surfaced as the active state changes
 const CAPTION: Record<State, { how: string; detail: string }> = {
   TRANSIT: { how: "Transit", detail: "Cruise to the patrol area on best-L/D." },
-  SEARCH: { how: "Bayesian search", detail: "Probability grid · steer to maximum expected detection gain, not a lawnmower." },
+  SEARCH: { how: "Persistent coverage", detail: "Threat-weighted patrol · denser inshore, with a revisit bound so no water goes stale." },
   SCAN: { how: "Confidence gate", detail: "Close in to inspect · confidence must clear τ for K_SUSTAIN frames. One lucky frame never commits." },
   TRACK: { how: "Orbit-to-observe", detail: "Sustained τ crossing → orbit the contact, geolocate, log the detection." },
   RTL: { how: "Return", detail: "Link / compute / battery loss → autopilot-handled return." },

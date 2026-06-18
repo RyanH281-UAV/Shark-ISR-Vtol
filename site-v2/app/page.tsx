@@ -15,13 +15,15 @@ const nav = [
   { href: "#stack", label: "Stack" },
   { href: "#architecture", label: "Architecture" },
   { href: "#status", label: "Status" },
+  { href: "#testing", label: "Testing" },
+  { href: "#roadmap", label: "Roadmap" },
 ];
 
 const contributions = [
   {
     n: "01",
-    title: "Bayesian search",
-    body: "The patrol area is a probability grid. Every null observation lowers searched cells by Bayes' rule, and guidance steers toward maximum expected detection gain — not a blind lawnmower.",
+    title: "Persistent coverage",
+    body: "The swim zone is covered by a threat-weighted persistent patrol — shore-parallel sweeps, denser inshore where sharks are, with a revisit bound so no water goes stale. Probability re-grows as a target could move in, so guidance returns instead of chasing one greedy peak. Coverage, not a one-shot find. Designed (Phase 4); SITL pending.",
   },
   {
     n: "02",
@@ -31,7 +33,7 @@ const contributions = [
   {
     n: "03",
     title: "Onboard, link-independent",
-    body: "The detector (YOLOv8s compiled to a Hailo .hef) runs on a 13-TOPS NPU on the aircraft. Losing every radio link costs situational awareness — never autonomy.",
+    body: "The detector (YOLOv8n compiled to a Hailo .hef) runs on a 13-TOPS NPU on the aircraft. Losing every radio link costs situational awareness — never autonomy.",
   },
 ];
 
@@ -67,6 +69,53 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
       <span className="text-accent">// </span>
       {children}
     </span>
+  );
+}
+
+// Placeholder section for work not yet built — honest "to be continued" shell.
+function ComingSoon({
+  id,
+  kicker,
+  title,
+  body,
+  items,
+}: {
+  id: string;
+  kicker: string;
+  title: string;
+  body: string;
+  items: string[];
+}) {
+  return (
+    <section id={id} className="border-b border-line">
+      <div className="mx-auto max-w-6xl px-6 py-20">
+        <Eyebrow>{kicker}</Eyebrow>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-4xl font-semibold tracking-tight text-primary sm:text-5xl">
+            {title}
+          </h2>
+          <span className="rounded-full border border-line2 px-2.5 py-1 font-mono text-[0.6rem] uppercase tracking-wider text-faint">
+            To be continued
+          </span>
+        </div>
+        <p className="mt-4 max-w-2xl text-secondary">{body}</p>
+        <div className="mt-10 grid gap-3 sm:grid-cols-3">
+          {items.map((it) => (
+            <div
+              key={it}
+              className="rounded-lg border border-dashed border-line2 bg-surface/40 p-5"
+            >
+              <div className="font-mono text-[0.62rem] uppercase tracking-wider text-faint">
+                {it}
+              </div>
+              <div className="mt-2 font-mono text-xs text-faint/70">
+                Coming soon
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -114,7 +163,7 @@ export default function Home() {
             <ShapeGrid />
             <Eyebrow>The contribution</Eyebrow>
             <SplitHeading
-              text="Small drones can fly search patterns. The gap is the decision."
+              text="The search that doesn't miss, and the decision that doesn't guess."
               as="h2"
               className="max-w-3xl text-4xl font-semibold tracking-tight text-primary sm:text-5xl"
             />
@@ -270,6 +319,24 @@ export default function Home() {
             </ul>
           </div>
         </section>
+
+        {/* to be continued — testing/simulation reports */}
+        <ComingSoon
+          id="testing"
+          kicker="Verification & SITL"
+          title="Testing reports"
+          body="Every behaviour gets a SITL check before it reaches the aircraft — gate checks G1–G4 and the T1–T10 campaign are already defined. Reports and recordings land here as the simulation runs."
+          items={["Search & coverage report", "Failsafe scenarios", "DDS end-to-end"]}
+        />
+
+        {/* to be continued — schedule map */}
+        <ComingSoon
+          id="roadmap"
+          kicker="Plan"
+          title="Schedule map"
+          body="The phase plan from interface freeze to first flight. A live status map of what's done, what's in progress, and what's queued will live here."
+          items={["Phase timeline", "Milestone gates", "Flight-test window"]}
+        />
       </main>
 
       {/* footer */}
