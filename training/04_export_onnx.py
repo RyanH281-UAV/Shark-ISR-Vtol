@@ -20,7 +20,7 @@ After this step
 On a Linux machine with Hailo DFC installed (your WSL Ubuntu 22.04):
 
     pip install hailo_dataflow_compiler-*.whl   # from developer.hailo.ai
-    hailo optimize best.onnx --calib-set-path merged/images/val/
+    hailo optimize best.onnx --calib-set-path merged_clean/images/train/
     hailo compile best.onnx --hw-arch hailo8l --output-dir .
     # → produces best.hef
 
@@ -72,7 +72,8 @@ def export(weights: Path) -> None:
     print(f"\nExport complete: {export_path}")
     print()
     print("Next steps (run in WSL Ubuntu-22.04 with Hailo DFC installed):")
-    print(f"  hailo optimize {export_path} --calib-set-path merged/images/val/")
+    # calibrate on TRAIN (representative); never on val/test — keep the eval honest
+    print(f"  hailo optimize {export_path} --calib-set-path merged_clean/images/train/")
     print(f"  hailo compile  {export_path} --hw-arch hailo8l --output-dir .")
     print("  # → produces best.hef")
     print()

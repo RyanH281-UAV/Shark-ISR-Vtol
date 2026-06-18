@@ -49,7 +49,8 @@ import torch  # must load before ultralytics to avoid Windows fbgemm.dll load-or
 from pathlib import Path
 
 
-MERGED_YAML = Path(__file__).parent / "merged" / "sharks.yaml"
+# leakage-free split from 02_merge_datasets.py (group-disjoint train/val/test)
+MERGED_YAML = Path(__file__).parent / "merged_clean" / "sharks.yaml"
 RUNS_DIR = Path(__file__).parent / "runs"
 
 
@@ -60,6 +61,7 @@ def train(
     device: str,
     patience: int,
     freeze: int,
+    model: str = "yolov8s.pt",
 ) -> None:
     try:
         from ultralytics import YOLO  # type: ignore
@@ -73,9 +75,9 @@ def train(
         return
 
     print("=" * 60)
-    print("Training YOLOv8s — shark detector")
+    print("Training — shark detector")
     print(f"  dataset  : {MERGED_YAML}")
-    print(f"  model    : yolov8s.pt (pre-trained COCO backbone)")
+    print(f"  model    : {model} (pre-trained COCO backbone)")
     print(f"  epochs   : {epochs}")
     print(f"  batch    : {batch}")
     print(f"  imgsz    : {imgsz}")
@@ -84,9 +86,9 @@ def train(
     print(f"  freeze   : first {freeze} backbone layers")
     print("=" * 60)
 
-    model = YOLO("yolov8s.pt")
+    yolo = YOLO(model)
 
-    results = model.train(
+    results = yolo.train(
         data=str(MERGED_YAML),
         epochs=epochs,
         imgsz=imgsz,
@@ -118,7 +120,12 @@ def train(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fine-tune YOLOv8s on merged shark dataset.")
+    parser = argparse.ArgumentParser(description="Fine-tune YOLO on the clean merged shark dataset.")
+    parser.add_argument(
+        "--model", default="yolov8s.pt",
+        help="Base weights. yolov8n.pt for the energy-constrained onboard model; "
+             "yolov8s.pt for the larger variant.",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch", type=int, default=16, help="Batch size (reduce to 8 if OOM)")
     parser.add_argument("--imgsz", type=int, default=640, help="Input image size (must match Hailo)")
@@ -142,6 +149,7 @@ def main() -> None:
         device=args.device,
         patience=args.patience,
         freeze=args.freeze,
+        model=args.model,
     )
 
 
