@@ -63,7 +63,8 @@ tail -f /tmp/shark_isr_logs/flight_*.jsonl | python -m json.tool
 ## Notes
 
 - Depends only on `shark_isr_interfaces` for cross-package types (ADR-002).
-- No RF/GCS transport: MAVLink telemetry is handled by `shark_isr_autopilot`.
+- No RF/GCS transport in this node. The GCS telemetry link is QGC ↔ Pixhawk over a
+  MAVLink radio (ADR-015); `/telemetry_summary` is a supplementary ROS operator feed only.
 - JSONL format: each line is valid JSON, easy to ingest with `pandas.read_json(..., lines=True)`.
 - Log files are line-buffered — data is flushed on every detection/record even without a flush call.
 - No deterministic math → no unit tests required per project convention.

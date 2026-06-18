@@ -92,9 +92,7 @@ Format per entry: context, decision, rationale, status.
 
 ---
 
-*Open decisions to record when made: specific detector model/`.hef`; geolocation method (camera
-intrinsics + vehicle attitude + AGL → lat/lon); comms/link architecture; battery chemistry choice
-against the mass/power budget.*
+*Open decisions: battery chemistry choice against the mass/power budget.*
 
 ---
 
@@ -205,3 +203,75 @@ against the mass/power budget.*
   ENU yaw convention in guidance setpoints, Point() keyword-construction crash,
   hold-position drift latch, and a mission-level TRACKING timeout (120 s default).
 - **Status:** Locked (2026-06-11). SITL verification of all fixes pending (Phase 2 gate).
+
+---
+
+### ADR-012 — Pluggable search strategies: PersistentPatrol default, strip search region
+
+- **Context:** The guidance node hardcoded a boustrophedon pattern over a circle. For a
+  beachfront swim zone the search area is a strip (long along-shore, narrow cross-shore), and
+  operational use requires a choice of patrol doctrine: full coverage, first-find greedy,
+  persistent coverage with a hard revisit bound.
+- **Decision:** Introduce a `SearchStrategy` Protocol and four implementations in `strategies.py`:
+  `LawnmowerStrategy` (coverage floor), `BayesianGreedyStrategy` (first-find/SAR),
+  `PersistentPatrolStrategy` (default — hard revisit bound T: force-visit the oldest cell when
+  any cell exceeds T, otherwise highest threat×probability cell), and `BarrierStrategy` (stub —
+  IAMSAR barrier, deferred). A `SearchRegion` NamedTuple (rotated rectangle: centre, length,
+  width, shore bearing, alt) replaces the circle as the search area primitive.
+  `boustrophedon_strip` generates shore-parallel lanes over the strip. `check_feasibility`
+  provides a pre-flight gate: loop time ≤ T and ≤ endurance, else named remedy.
+- **Rationale:** Strategy is a config choice, not a rewrite. PersistentPatrol's hard revisit
+  bound is the differentiator for beach ISR: it guarantees worst-case freshness, not just
+  expected freshness. The strip region reflects real beach geometry.
+- **Status:** Implemented + unit-tested (44/44 pass, 2026-06-18). **Not yet wired into
+  `guidance_node`** — integration pending post-SITL campaign.
+
+---
+
+### ADR-013 — Shark detection: YOLOv8s fine-tuned on beach imagery
+
+- **Context:** The Hailo-8L detector requires a `.hef`-compiled model. A YOLO variant is the
+  pragmatic choice (Hailo Model Zoo support; real-time capable at edge).
+- **Decision:** Fine-tune **YOLOv8s** on a curated beach/aerial shark dataset. Training
+  pipeline lives in `training/`. Model compiled to `.hef` with the Hailo Dataflow Compiler for
+  deployment to the AI HAT+.
+- **Rationale:** YOLOv8s balances accuracy and inference speed for 13 TOPS; pre-trained weights
+  reduce data requirements. Fine-tuning on domain imagery is required because the base model has
+  no beach-aerial shark class.
+- **Status:** Training pipeline built. Dataset split fixed (see ADR-014). `.hef` compilation and
+  `hef_path` deployment pending (Phase 5/8).
+
+---
+
+### ADR-014 — Leakage-free dataset split: source-disjoint, not frame-random
+
+- **Context:** Initial training used a frame-random train/val split on video-derived imagery.
+  Video frames from the same clip are highly correlated → train and val sets share near-duplicate
+  frames → mAP50=0.988 was inflated (leakage, not generalisation).
+- **Decision:** Enforce a **source-disjoint** split: all frames from a given source video/clip
+  go entirely to train *or* val, never split across them. Re-validation after the split fix
+  required before trusting eval numbers.
+- **Rationale:** Honest eval is a safety-relevant claim. A detector with inflated mAP may miss
+  real targets; the leakage must be closed before the model drives any safety-relevant detection.
+- **Status:** Locked (2026-06-18, fix committed). Re-validation results pending.
+
+---
+
+### ADR-015 — Ground control station: QGroundControl + thin detection view
+
+- **Context:** The stack has no GCS, no MAVLink radio, and no RF downlink. The architecture doc
+  shows a GCS ↔ autopilot over MAVLink, but nothing was built. Options: (a) full custom GCS,
+  (b) QGroundControl off-the-shelf + custom detection overlay only.
+- **Decision:** Use **QGroundControl** for flight operations (maps, mission upload, telemetry
+  HUD, arm/mode/failsafe, parameter tuning). Build only the custom slice QGC cannot provide: a
+  live shark-detection feed with geo-pins — via a Foxglove panel subscribing to `/detection` or
+  a rosbridge→web map. RF link: SiK or RFD900 MAVLink radio between Pixhawk 6C Mini and GCS
+  laptop/tablet.
+- **Rationale:** QGC is mature, PX4-native, and free. Re-implementing maps/HUD/mission editor
+  would take months with no user-facing gain. The detection overlay is the only novel element.
+  Lazy: build the 5%, reuse the 95%.
+- **Consequences:** (a) Need a MAVLink radio (mass/power budget — factor into Phase 8). (b)
+  QGC `.plan` files handle transit waypoints; the search strip is encoded as a `SearchRegion`
+  YAML preset in `config/mission.yaml`. (c) `shark_isr_telemetry`'s "GCS relay" claim is
+  satisfied by the QGC connection, not by the `/telemetry_summary` String topic alone.
+- **Status:** Decision locked (2026-06-18). Implementation pending (Phase GCS — after SITL).

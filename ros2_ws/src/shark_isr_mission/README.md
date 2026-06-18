@@ -44,6 +44,7 @@ any ─low_battery─▶ RETURNING  (failsafe)
 | `low_battery_threshold` | 0.20 | Battery fraction to trigger return (application failsafe) |
 | `arm_timeout_s` | 10.0 | Seconds before aborting arm sequence |
 | `transit_timeout_s` | 300.0 | Seconds before starting search if transit hasn't completed |
+| `track_timeout_s` | 120.0 | Seconds in TRACKING before auto-resuming SEARCH |
 
 ## Run in isolation
 

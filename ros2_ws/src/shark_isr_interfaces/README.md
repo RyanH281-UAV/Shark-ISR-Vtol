@@ -198,7 +198,6 @@ ros2 interface list | grep shark_isr
 
 ## Notes
 
-- Phase 1 spec is **not yet frozen** — freeze happens in next session after review.
-- `AutopilotCommand.srv` (arm/RTL/mode direct commands mission → autopilot) deferred to Phase 3;
-  it requires PX4-specific VehicleCommand semantics and belongs in that implementation phase.
+- Phase 1 interfaces are **frozen** (2026-05-31). `AutopilotCommand.srv` was deferred from
+  Phase 1 (ADR-009) and implemented in Phase 3 — it is now part of the frozen interface set.
 - No behaviour is "done" until it has a passing SITL check (see docs/BUILD_PLAN.md).

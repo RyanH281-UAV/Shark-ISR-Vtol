@@ -2,7 +2,9 @@
 
 **The ONLY package talking to the autopilot.**  All other stack packages are firmware-agnostic.
 
-PX4 via uXRCE-DDS + `px4_msgs` (MAVLink kept behind the same interface as fallback).
+PX4 via uXRCE-DDS + `px4_msgs`. ADR-002 reserves the interface boundary for a MAVLink
+fallback, but **no MAVLink implementation is currently present** — uXRCE-DDS is the only
+transport coded. The GCS radio link is handled by QGC ↔ Pixhawk directly (ADR-015).
 See ADR-002, ADR-003, ADR-007, ADR-008.
 
 ## Responsibilities
