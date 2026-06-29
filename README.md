@@ -43,10 +43,21 @@ every radio link costs situational awareness — never autonomy.
 ```mermaid
 flowchart LR
     subgraph CC["Companion — Raspberry Pi 5 · ROS 2"]
-        PER[perception<br/>Cam3 → Hailo-8L → geo] --> GUI[guidance<br/>Bayes map · state machine]
-        MIS[mission<br/>sequencing · arbitration] --> GUI
-        GUI --> AP[autopilot<br/>sole PX4 boundary]
-        PER & GUI & MIS --> TEL[telemetry<br/>logs · GCS relay]
+        PER[perception<br/>Cam3 → Hailo-8L → geo]
+        GUI[guidance<br/>Bayes map · state machine]
+        MIS[mission<br/>sequencing · arbitration]
+        AP[autopilot<br/>sole PX4 boundary]
+        TEL[telemetry<br/>logs · GCS relay]
+
+        AP -->|vehicle_state| GUI
+        AP -->|vehicle_state| MIS
+        AP -->|vehicle_state| PER
+        PER -->|detection| GUI
+        GUI -->|guidance_setpoint| AP
+        GUI -->|search_state| MIS
+        MIS -->|AutopilotCommand srv| AP
+        MIS -->|SetGuidanceMode srv| GUI
+        PER & GUI & MIS -->|topics| TEL
     end
     AP <-->|uXRCE-DDS| PX4[PX4 — Pixhawk 6C Mini<br/>inner loop · tilt transition · failsafes]
 ```
@@ -56,7 +67,7 @@ flowchart LR
 | Layer | Owns |
 |---|---|
 | **PX4** | Inner loop, the tilt transition, every failsafe. ROS 2 can only *ask*. |
-| **ROS 2** | Mission, guidance, perception, telemetry. Six interfaces (4 msg, 2 srv), frames + units explicit, frozen before any node was written (ENU/FLU everywhere; all NED↔ENU conversion in one package). |
+| **ROS 2** | Mission, guidance, perception, telemetry. Seven interfaces (4 msg, 3 srv), frames + units explicit, frozen before any node was written (ENU/FLU everywhere; all NED↔ENU conversion in one package). |
 
 The companion computer is architecturally incapable of overriding a failsafe. Its total failure
 degrades to an autopilot-handled RTL.
@@ -165,7 +176,7 @@ mission stack:
 | Path | What |
 |---|---|
 | `ros2_ws/` | ROS 2 workspace — 7 packages, builds green (colcon 8/8 on Humble) |
-| `ros2_ws/src/shark_isr_interfaces/` | 4 msg + 2 srv — the interface contract |
+| `ros2_ws/src/shark_isr_interfaces/` | 4 msg + 3 srv — the interface contract |
 | `ros2_ws/src/shark_isr_autopilot/` | Sole PX4 boundary (uXRCE-DDS); NED↔ENU here only |
 | `ros2_ws/src/shark_isr_perception/` | Cam3 → Hailo-8L → geolocation node |
 | `ros2_ws/src/shark_isr_guidance/` | Bayesian map + search pattern + orbit-on-detect |
