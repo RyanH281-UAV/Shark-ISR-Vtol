@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { AnimatedGroup } from "./AnimatedGroup";
 import SplitHeading from "./ui/SplitHeading";
 
-const GITHUB_URL = "https://github.com/YOUR-USERNAME/shark-isr-vtol";
+const GITHUB_URL = "https://github.com/RyanH281-UAV/shark-isr-vtol";
 
 // Real platform/build facts only — README forbids unproven capability claims.
 const specs = [

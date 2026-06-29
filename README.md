@@ -187,7 +187,6 @@ mission stack:
 | `training/` | YOLOv8n pipeline — download → merge → train → ONNX → Hailo `.hef` |
 | `training/runs/detect/` | Training artifacts: curves, confusion matrix, detection previews |
 | `docs/` | Architecture, decisions (ADR-001–015), build plan, platform reference |
-| `CLAUDE.md` | Agent brief for the AI-orchestrated build workflow |
 
 ---
 

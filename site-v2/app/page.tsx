@@ -8,7 +8,7 @@ import { GitHubIcon, LinkedInIcon } from "@/components/Icons";
 import SplitHeading from "@/components/ui/SplitHeading";
 import ShapeGrid from "@/components/ui/ShapeGrid";
 
-const GITHUB_URL = "https://github.com/YOUR-USERNAME/shark-isr-vtol";
+const GITHUB_URL = "https://github.com/RyanH281-UAV/shark-isr-vtol";
 
 const nav = [
   { href: "#autonomy-loop", label: "Autonomy loop" },

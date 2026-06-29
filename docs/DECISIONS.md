@@ -1,6 +1,6 @@
 # Decision Log (ADR-style)
 
-Seed entries for the project. The Ruflo ADR workflow appends new ones here as decisions are made.
+Architecture decisions are recorded here as they are made.
 Format per entry: context, decision, rationale, status.
 
 ---

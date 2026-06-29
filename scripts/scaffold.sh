@@ -57,7 +57,7 @@ for entry in "${PKGS[@]}"; do
   mkdir -p "$pdir"
   write_readme "$pdir" "$name" "$purpose"
 
-  # Minimal manifest stubs (Ruflo/Claude Code will flesh these out per package)
+  # Minimal manifest stubs — flesh these out per package
   if [[ ! -f "$pdir/package.xml" ]]; then
     cat > "$pdir/package.xml" <<EOF
 <?xml version="1.0"?>
@@ -89,7 +89,7 @@ if [[ ! -f "$WSR" ]]; then
 
 Build: `colcon build` from this directory. Source: `source install/setup.bash`.
 One package per responsibility; all cross-package types live in `shark_isr_interfaces`.
-See ../docs/ARCHITECTURE.md for the system view and ../CLAUDE.md for project conventions.
+See ../docs/ARCHITECTURE.md for the system view and package conventions.
 EOF
   echo "wrote workspace README"
 fi

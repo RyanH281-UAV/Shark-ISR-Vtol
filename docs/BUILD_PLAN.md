@@ -1,11 +1,9 @@
 # Build Plan (phased)
 
-Feed this to Ruflo's goals/planning workflow. `[ ]` todo, `[~]` in progress, `[x]` done.
+Phased build checklist — `[ ]` todo, `[~]` in progress, `[x]` done.
 Do not jump phases — interfaces are frozen before nodes are built; SITL precedes hardware.
 
 ## Phase 0 — Foundation
-- [ ] `npx ruflo@latest init` in the repo; verify `.claude/`, `.claude-flow/`, `CLAUDE.md` present
-- [ ] Install the plugins listed in USAGE_PLAN.md; register the Ruflo MCP server
 - [ ] Run `scripts/scaffold.sh` to create the ROS 2 workspace skeleton + module READMEs
 - [ ] `colcon build` succeeds on the empty packages
 

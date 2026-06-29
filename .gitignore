@@ -17,6 +17,15 @@ ruvector.db
 .claude-flow/
 .DS_Store
 
+# AI-workflow / orchestration files (kept locally, not for public repo)
+CLAUDE.md
+KICKOFF_PROMPT.md
+USAGE_PLAN.md
+site-v2/CLAUDE.md
+site-v2/AGENTS.md
+site-v2/PRODUCT.md
+site-v2/SITE_UPGRADE.md
+
 # Claude Code local settings (contains machine paths)
 .claude/settings.local.json
 
