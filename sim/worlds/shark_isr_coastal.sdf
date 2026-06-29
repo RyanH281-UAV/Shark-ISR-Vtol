@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  shark_isr_coastal.sdf — Gazebo Harmonic (gz-sim 8) world for shark ISR VTOL simulation.
+
+  This world is SPECIFIC to the shark-monitoring ISR project.
+  DO NOT use for the SkimWing capstone or any other project.
+
+  Environment: open coastal / over-water patrol area.
+  GPS origin: Cottesloe Beach, Perth WA (-31.998, 115.748) — representative
+              west-coast shark-monitoring area.
+  Altitude: 0 m AMSL (sea level). The vehicle spawns above this.
+
+  Plugin loading is handled by PX4's gz bridge; no explicit plugin tags needed here.
+-->
+<sdf version="1.9">
+  <world name="shark_isr_coastal">
+
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <gravity>0 0 -9.8</gravity>
+    <!-- Perth coastal magnetic field (approximate) -->
+    <magnetic_field>2.2e-05 5.7e-06 -5.7e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <scene>
+      <grid>false</grid>
+      <!-- Coastal sky: lighter blue -->
+      <ambient>0.55 0.65 0.75 1</ambient>
+      <background>0.45 0.65 0.85 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <!-- Ocean surface — replaces ground plane -->
+    <model name="ocean_surface">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction><ode/></friction>
+            <bounce/>
+            <contact/>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>2000 2000</size>
+            </plane>
+          </geometry>
+          <material>
+            <!-- Deep blue-green ocean colour -->
+            <ambient>0.02 0.12 0.28 1</ambient>
+            <diffuse>0.04 0.22 0.48 1</diffuse>
+            <specular>0.18 0.28 0.38 1</specular>
+          </material>
+        </visual>
+        <pose>0 0 0 0 0 0</pose>
+        <inertial>
+          <pose>0 0 0 0 0 0</pose>
+          <mass>1</mass>
+          <inertia>
+            <ixx>1</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>1</iyy><iyz>0</iyz><izz>1</izz>
+          </inertia>
+        </inertial>
+        <enable_wind>false</enable_wind>
+      </link>
+      <pose>0 0 0 0 0 0</pose>
+      <self_collide>false</self_collide>
+    </model>
+
+    <!-- Sun — mid-morning angle for WA coastal visibility -->
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.3 0.5 -0.8</direction>
+      <diffuse>0.95 0.92 0.85 1</diffuse>
+      <specular>0.30 0.28 0.24 1</specular>
+      <attenuation>
+        <range>2000</range>
+        <linear>0</linear>
+        <constant>1</constant>
+        <quadratic>0</quadratic>
+      </attenuation>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+
+    <!--
+      GPS origin: Cottesloe Beach, Perth WA.
+      ENU frame: x = East, y = North, z = Up.
+      Vehicle spawns at (0,0,z) in this frame = directly over the origin.
+    -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>-31.998</latitude_deg>
+      <longitude_deg>115.748</longitude_deg>
+      <elevation>0.0</elevation>
+    </spherical_coordinates>
+
+  </world>
+</sdf>

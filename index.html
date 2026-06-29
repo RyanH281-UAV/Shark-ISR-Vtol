@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shark-ISR VTOL — Detection-Gated Guidance Autonomy | Ryan H.</title>
+<meta name="description" content="A detection-confidence-gated ROS 2 guidance state machine for autonomous maritime ISR — with a live in-browser demonstration of the autonomy loop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS — every colour/typeface derives from here
+   ============================================================ */
+:root{
+  --bg:#0A0F14; --bg2:#0D141B; --panel:#101820; --panel2:#0C1218;
+  --line:#1C2933; --line2:#27394A;
+  --text:#C6D3DC; --bright:#E9F0F4; --muted:#7B8C99;
+  --teal:#45B8AC; --amber:#E8A33D; --slate:#5A7A94; --warn:#C2604F;
+  --display:'Saira Condensed',sans-serif;
+  --body:'IBM Plex Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button{font-family:var(--mono);cursor:pointer}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+section{padding:84px 0;border-top:1px solid var(--line)}
+section.alt{background:var(--bg2)}
+h1,h2,h3{font-family:var(--display);text-transform:uppercase;letter-spacing:.045em;line-height:1.05}
+h1{font-size:clamp(2.6rem,7vw,4.8rem);font-weight:700;color:var(--bright)}
+h2{font-size:clamp(1.6rem,3.2vw,2.3rem);font-weight:600;color:var(--bright);margin-bottom:10px}
+h3{font-size:1.02rem;font-weight:600;color:var(--text);letter-spacing:.09em;margin-bottom:10px}
+p{max-width:74ch}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:16px}
+.eyebrow::before{content:"// ";color:var(--teal)}
+.sub{color:var(--muted);margin-bottom:40px;max-width:66ch;font-size:1.02rem}
+.mono{font-family:var(--mono)}
+.note{font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.04em}
+.brkt{position:relative}
+.brkt::before,.brkt::after{content:"";position:absolute;width:14px;height:14px;border:1px solid var(--line2);pointer-events:none}
+.brkt::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+.brkt::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+nav{position:sticky;top:0;background:rgba(10,15,20,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:60}
+nav .wrap{display:flex;align-items:center;gap:24px;height:54px;overflow-x:auto;scrollbar-width:none}
+nav .brand{font-family:var(--mono);font-size:.8rem;color:var(--amber);white-space:nowrap;letter-spacing:.08em}
+nav a.nl{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap;padding:4px 0;border-bottom:1px solid transparent}
+nav a.nl:hover{color:var(--bright);text-decoration:none;border-bottom-color:var(--teal)}
+.badge{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;padding:3px 9px;border-radius:2px;vertical-align:middle;white-space:nowrap}
+.b-done{color:#0A0F14;background:var(--teal)}
+.b-prog{color:#0A0F14;background:var(--amber)}
+.b-plan{color:var(--slate);border:1px solid var(--slate)}
+.b-sim{color:var(--amber);border:1px solid var(--amber)}
+header{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
+#heroCanvas{position:absolute;inset:0;width:100%;height:100%;opacity:.5}
+.hero-inner{position:relative;padding:120px 0 0}
+.hero-pitch{font-size:1.16rem;color:var(--muted);margin:24px 0 30px;max-width:58ch}
+.hero-pitch strong{color:var(--text);font-weight:500}
+.idline{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-left:2px solid var(--amber);padding-left:14px;line-height:2}
+.idline b{color:var(--bright);font-weight:500}
+.hero-cta{display:inline-block;margin-top:30px;font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);padding:11px 22px;border-radius:2px;transition:background .15s,color .15s}
+.hero-cta:hover{background:var(--amber);color:#0A0F14;text-decoration:none}
+.specrail{position:relative;margin-top:64px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr)}
+.spec{padding:18px 16px;border-right:1px solid var(--line)}
+.spec:last-child{border-right:none}
+.spec .v{font-family:var(--display);font-size:1.7rem;font-weight:600;color:var(--bright);letter-spacing:.02em}
+.spec .k{font-family:var(--mono);font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.sim-head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.sim-shell{display:grid;grid-template-columns:1.65fr 1fr;gap:18px;margin-top:26px}
+.sim-stage{position:relative;background:var(--panel2);border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+#simCanvas{display:block;width:100%;height:auto}
+.sim-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(10,15,20,.78);transition:opacity .25s}
+.sim-overlay.hide{opacity:0;pointer-events:none}
+.sim-overlay .big{font-family:var(--display);font-size:1.5rem;letter-spacing:.12em;color:var(--bright);text-transform:uppercase}
+.sim-side{display:flex;flex-direction:column;gap:14px}
+.sim-card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px}
+.statechips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;padding:6px 12px;border:1px solid var(--line2);border-radius:2px;color:var(--muted)}
+.chip.on[data-c="TRANSIT"]{color:#0A0F14;background:var(--slate);border-color:var(--slate)}
+.chip.on[data-c="SEARCH"]{color:#0A0F14;background:var(--teal);border-color:var(--teal)}
+.chip.on[data-c="TRACK"]{color:#0A0F14;background:var(--amber);border-color:var(--amber)}
+.chip.on[data-c="RTL"]{color:#0A0F14;background:var(--warn);border-color:var(--warn)}
+.gauge{height:10px;background:var(--panel2);border:1px solid var(--line2);border-radius:2px;position:relative;margin-top:8px}
+.gauge .fill{height:100%;width:0%;background:var(--amber);transition:width .12s linear}
+.gauge .tau{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--bright);left:85%}
+.gauge .tau::after{content:"τ";position:absolute;top:-16px;left:-4px;font-family:var(--mono);font-size:.62rem;color:var(--bright)}
+.kv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.74rem;color:var(--muted);padding:5px 0;border-top:1px solid var(--line)}
+.kv b{color:var(--text);font-weight:500}
+#simLog{font-family:var(--mono);font-size:.7rem;line-height:1.9;color:var(--muted);height:172px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+#simLog .e{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#simLog .t-det{color:var(--amber)}
+#simLog .t-sys{color:var(--teal)}
+#simLog .t-rtl{color:var(--warn)}
+.sim-ctl{display:flex;gap:8px;flex-wrap:wrap}
+.sbtn{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;background:none;border:1px solid var(--line2);color:var(--text);padding:9px 16px;border-radius:2px;transition:border-color .15s,color .15s}
+.sbtn:hover{border-color:var(--teal);color:var(--bright)}
+.sbtn.primary{border-color:var(--amber);color:var(--amber)}
+.sbtn.primary:hover{background:var(--amber);color:#0A0F14}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}
+.legend span{font-family:var(--mono);font-size:.66rem;color:var(--muted);display:flex;align-items:center;gap:7px}
+.sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.sm-wrap{display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:start;margin-top:28px}
+.sm-svg{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px}
+.sm-node{cursor:pointer}
+.sm-node rect{fill:var(--panel2);stroke:var(--line2);stroke-width:1.5;transition:stroke .15s,filter .15s}
+.sm-node text{font-family:var(--mono);font-size:13px;fill:var(--text);letter-spacing:1.5px;pointer-events:none}
+.sm-node.active rect{stroke-width:2.5;filter:drop-shadow(0 0 6px rgba(69,184,172,.35))}
+.sm-node[data-s="TRANSIT"].active rect{stroke:var(--slate)}
+.sm-node[data-s="SEARCH"].active rect{stroke:var(--teal)}
+.sm-node[data-s="TRACK"].active rect{stroke:var(--amber);filter:drop-shadow(0 0 6px rgba(232,163,61,.4))}
+.sm-node[data-s="RTL"].active rect{stroke:var(--warn);filter:drop-shadow(0 0 6px rgba(194,96,79,.4))}
+.sm-edge{stroke:var(--muted);stroke-width:1.3;fill:none;marker-end:url(#arrw);opacity:.6}
+.sm-edge.hot{stroke:var(--amber);opacity:1;stroke-dasharray:5 4;animation:dash 1.1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-18}}
+.sm-elabel{font-family:var(--mono);font-size:9.5px;fill:#7B8C99;letter-spacing:.5px}
+.sm-panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px;min-height:280px}
+.sm-panel h3{display:flex;align-items:center;gap:10px}
+.sm-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.sm-panel ul{list-style:none;margin-top:12px}
+.sm-panel li{font-size:.85rem;color:var(--muted);padding:8px 0;border-top:1px solid var(--line)}
+.sm-panel li b{color:var(--text);font-weight:500;font-family:var(--mono);font-size:.78rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:22px}
+.card p{font-size:.9rem;color:var(--muted)}
+.mono-h{font-family:var(--mono);font-size:.76rem;color:var(--teal);margin-bottom:8px;display:block;letter-spacing:.06em}
+.df-svg{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;margin-top:24px}
+.df-box rect{fill:var(--panel2);stroke:var(--line2);stroke-width:1.3}
+.df-box text{font-family:var(--mono);font-size:11.5px;fill:var(--text);letter-spacing:.5px}
+.df-box .sub{font-size:9px;fill:#7B8C99}
+.df-edge{stroke:#7B8C99;stroke-width:1.2;fill:none;marker-end:url(#dfa);opacity:.7}
+.df-elabel{font-family:var(--mono);font-size:9px;fill:#45B8AC;letter-spacing:.4px}
+.df-zone{fill:none;stroke:#1C2933;stroke-dasharray:4 4}
+.df-ztitle{font-family:var(--mono);font-size:9.5px;fill:#7B8C99;letter-spacing:2px}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:left;padding:11px 12px;border-bottom:1px solid var(--line2)}
+td{padding:11px 12px;border-bottom:1px solid var(--line);color:var(--muted)}
+td:first-child{color:var(--text)}
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;margin-top:18px}
+.pipe .step{background:var(--panel);border:1px solid var(--line);padding:15px 16px;flex:1;min-width:160px;position:relative}
+.pipe .step+.step{border-left:none}
+.pipe .step+.step::before{content:"›";position:absolute;left:-6px;top:50%;transform:translateY(-50%);color:var(--teal);font-family:var(--mono);background:var(--bg);padding:0 1px}
+.pipe .step p{font-size:.78rem;color:var(--muted)}
+.adr{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.adr .card{padding:18px}
+.adr .card p{font-size:.85rem}
+.phase{display:flex;align-items:baseline;gap:14px;padding:15px 0;border-top:1px solid var(--line)}
+.phase:last-of-type{border-bottom:1px solid var(--line)}
+.phase .pnum{font-family:var(--mono);font-size:.72rem;color:var(--muted);min-width:70px}
+.phase .pname{flex:1;font-weight:500;color:var(--text)}
+.phase .pdesc{flex:2;font-size:.85rem;color:var(--muted)}
+.vid{background:var(--panel);border:1px dashed var(--line2);border-radius:3px;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+.vid span{font-family:var(--mono);font-size:.76rem;color:var(--muted);letter-spacing:.14em}
+footer{border-top:1px solid var(--line);padding:52px 0;font-family:var(--mono);font-size:.76rem;color:var(--muted)}
+footer .links{display:flex;gap:26px;margin-bottom:18px}
+.rv{opacity:0;transform:translateY(16px);transition:opacity .55s ease,transform .55s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  .rv{opacity:1;transform:none;transition:none}
+  .sm-edge.hot{animation:none}
+  #heroCanvas{display:none}
+}
+@media (max-width:880px){
+  .sim-shell,.sm-wrap,.grid2,.grid3,.adr{grid-template-columns:1fr}
+  .specrail{grid-template-columns:1fr 1fr;border-left:1px solid var(--line)}
+  .spec{border-top:1px solid var(--line)}
+  .phase{flex-wrap:wrap}.phase .pdesc{flex-basis:100%}
+  section{padding:56px 0}
+  .hero-inner{padding-top:84px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">SHARK-ISR / VTOL</span>
+    <a class="nl" href="#demo-sim">Live Demo</a>
+    <a class="nl" href="#autonomy">Autonomy</a>
+    <a class="nl" href="#system">System</a>
+    <a class="nl" href="#decisions">Decisions</a>
+    <a class="nl" href="#platform">Platform</a>
+    <a class="nl" href="#status">Status</a>
+    <a class="nl" href="#flight">Flight</a>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO — edit name / pitch / links here
+     ============================================================ -->
+<header>
+  <canvas id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="wrap hero-inner">
+    <span class="eyebrow">Autonomous maritime ISR · Guidance &amp; mission autonomy · 2026</span>
+    <h1>The Aircraft Decides<br>When It Has Found Something</h1>
+    <p class="hero-pitch">A ROS 2 guidance state machine that transitions a VTOL from
+      <strong>SEARCH to TRACK autonomously</strong>, gated on onboard detection confidence —
+      no video downlink in the loop, no operator watching a screen. The application is shark
+      monitoring. The engineering is persistent maritime patrol autonomy.</p>
+    <div class="idline">
+      <b>Ryan H.</b> — Electrical &amp; Aerospace Engineering, QUT<br>
+      Graduating November 2026 · Brisbane, Australia
+    </div>
+    <a class="hero-cta" href="#demo-sim">Run the autonomy loop ↓</a>
+
+    <!-- SPEC RAIL — headline numbers; edit values here -->
+    <div class="specrail brkt">
+      <div class="spec"><div class="v">6</div><div class="k">Interfaces frozen first</div></div>
+      <div class="spec"><div class="v">13 <span style="font-size:.9rem">TOPS</span></div><div class="k">Onboard NPU — Hailo-8L</div></div>
+      <div class="spec"><div class="v">1</div><div class="k">Autopilot boundary package</div></div>
+      <div class="spec"><div class="v">2.5 <span style="font-size:.9rem">kg</span></div><div class="k">MTOW hard ceiling</div></div>
+      <div class="spec"><div class="v">0</div><div class="k">Code to aircraft before SITL</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================
+     SECTION: LIVE AUTONOMY DEMO (signature element)
+     Tuning constants live in the CFG object in the script below.
+     ============================================================ -->
+<section id="demo-sim">
+  <div class="wrap rv">
+    <div class="sim-head">
+      <div>
+        <span class="eyebrow">01 · Live demonstration</span>
+        <h2>The autonomy loop, running in your browser</h2>
+      </div>
+      <span class="badge b-sim">Concept simulation — not flight data</span>
+    </div>
+    <p class="sub">This is the contribution, executable: a Bayesian probability map drives the
+      search; every null observation lowers cell probability by Bayes' rule; a confidence gate
+      (τ) decides the SEARCH→TRACK transition; energy reserve forces RTL. The same logic,
+      flight-grade, is what <span class="mono" style="color:var(--text)">shark_isr_guidance</span> implements in ROS 2.</p>
+
+    <div class="sim-shell">
+      <div class="sim-stage brkt">
+        <canvas id="simCanvas" width="840" height="525" aria-label="Autonomy loop simulation: aircraft searching a probability grid, detecting a target, orbiting it, and returning to launch"></canvas>
+        <div class="sim-overlay" id="simOverlay">
+          <div class="big">Autonomy Loop — Standby</div>
+          <span class="note">Bayesian search · confidence-gated transition · orbit-on-detect · energy-gated RTL</span>
+          <button class="sbtn primary" id="simStart">&#9654; Initialise mission</button>
+        </div>
+      </div>
+
+      <div class="sim-side">
+        <div class="sim-card">
+          <span class="mono-h">GUIDANCE STATE</span>
+          <div class="statechips">
+            <span class="chip" data-c="TRANSIT">TRANSIT</span>
+            <span class="chip" data-c="SEARCH">SEARCH</span>
+            <span class="chip" data-c="TRACK">TRACK</span>
+            <span class="chip" data-c="RTL">RTL</span>
+          </div>
+          <div style="margin-top:16px">
+            <div style="display:flex;justify-content:space-between" class="note"><span>DETECTION CONFIDENCE</span><span id="confVal">0.00</span></div>
+            <div class="gauge"><div class="fill" id="confFill"></div><div class="tau"></div></div>
+          </div>
+          <div style="margin-top:14px">
+            <div class="kv"><span>ENERGY RESERVE</span><b id="battVal">100%</b></div>
+            <div class="kv"><span>AREA COVERED</span><b id="covVal">0%</b></div>
+            <div class="kv"><span>DETECTIONS LOGGED</span><b id="detVal">0</b></div>
+            <div class="kv"><span>MISSION CLOCK</span><b id="clkVal">T+00:00</b></div>
+          </div>
+        </div>
+        <div class="sim-card" style="flex:1">
+          <span class="mono-h">EVENT LOG</span>
+          <div id="simLog"></div>
+        </div>
+        <div class="sim-ctl">
+          <button class="sbtn" id="simPause">Pause</button>
+          <button class="sbtn" id="simReset">Reset</button>
+          <button class="sbtn" id="simSpeed">Speed 1&times;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="sw" style="background:rgba(69,184,172,.55)"></span>High target probability</span>
+      <span><span class="sw" style="background:rgba(69,184,172,.08)"></span>Searched / low probability</span>
+      <span><span class="sw" style="background:#E8A33D"></span>Detection / orbit</span>
+      <span><span class="sw" style="border:1px solid #E9F0F4;background:none"></span>Sensor footprint</span>
+      <span><span class="sw" style="background:#C2604F"></span>RTL</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: AUTONOMY ARCHITECTURE
+     ============================================================ -->
+<section id="autonomy" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">02 · Autonomy architecture</span>
+    <h2>Guidance state machine <span class="badge b-plan">In development — Phase 4/6</span></h2>
+    <p class="sub">Mission phases are explicit states; transitions are conditions on detection
+      confidence, coverage, and vehicle/energy state. Select a state to inspect it. The
+      transition logic runs onboard — the ground link carries telemetry, never the decision.</p>
+
+    <div class="sm-wrap">
+      <svg class="sm-svg brkt" viewBox="0 0 560 340" role="img" aria-label="Guidance state machine diagram">
+        <defs><marker id="arrw" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7B8C99"/></marker></defs>
+        <path class="sm-edge" d="M150,80 H250"/>
+        <text class="sm-elabel" x="160" y="72">on-station</text>
+        <path class="sm-edge hot" id="edgeST" d="M330,108 C360,150 360,190 330,232"/>
+        <text class="sm-elabel" x="370" y="172" fill="#E8A33D">conf &#8805; &tau;</text>
+        <path class="sm-edge" d="M270,232 C240,190 240,150 270,108"/>
+        <text class="sm-elabel" x="142" y="172">target lost / observed</text>
+        <path class="sm-edge" d="M300,288 V312 H90 V108"/>
+        <text class="sm-elabel" x="118" y="306">battery · mission end · link loss</text>
+        <g class="sm-node" data-s="TRANSIT" tabindex="0" role="button" aria-label="TRANSIT state">
+          <rect x="40" y="52" width="110" height="56" rx="3"/><text x="62" y="85">TRANSIT</text></g>
+        <g class="sm-node active" data-s="SEARCH" tabindex="0" role="button" aria-label="SEARCH state">
+          <rect x="250" y="52" width="110" height="56" rx="3"/><text x="278" y="85">SEARCH</text></g>
+        <g class="sm-node" data-s="TRACK" tabindex="0" role="button" aria-label="TRACK state">
+          <rect x="250" y="204" width="110" height="56" rx="3"/><text x="284" y="237">TRACK</text></g>
+        <g class="sm-node" data-s="RTL" tabindex="0" role="button" aria-label="RTL failsafe state">
+          <rect x="40" y="204" width="110" height="56" rx="3"/><text x="78" y="237">RTL</text></g>
+      </svg>
+      <div class="sm-panel brkt" id="smPanel"></div>
+    </div>
+
+    <div class="grid2" style="margin-top:22px">
+      <div class="card">
+        <span class="mono-h">BAYESIAN SEARCH MAP <span class="badge b-plan">Planned · Phase 4</span></span>
+        <p>The search area is a grid of target-presence probabilities. A null observation updates
+           each seen cell by Bayes' rule against the detector's probability of detection — lowering,
+           never zeroing, it. Guidance steers toward maximum expected detection gain rather than a
+           fixed lawnmower: no wasted passes over cleared water, graceful handling of an imperfect
+           detector. The simulation above runs exactly this update.</p>
+      </div>
+      <div class="card">
+        <span class="mono-h">CONFIDENCE GATING</span>
+        <p>A single frame is not a detection. Confidence accumulates over consecutive
+           high-confidence frames and decays on misses; the SEARCH&rarr;TRACK transition fires only
+           when it crosses &tau; sustained over the gating window. The gate is the difference between
+           an autonomous system and a twitchy one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: SYSTEM DESIGN
+     ============================================================ -->
+<section id="system">
+  <div class="wrap rv">
+    <span class="eyebrow">03 · System design</span>
+    <h2>Responsibility boundary &amp; dataflow</h2>
+    <p class="sub">The autopilot owns the inner loop and the tilt transition. ROS 2 owns the outer
+      loop. The companion computer is never in the safety-critical path — any loss degrades to an
+      autopilot-handled safe state.</p>
+
+    <!-- DATAFLOW DIAGRAM -->
+    <svg class="df-svg" viewBox="0 0 880 360" role="img" aria-label="System dataflow: perception to guidance to mission to autopilot to PX4, with telemetry to ground">
+      <defs><marker id="dfa" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7B8C99"/></marker></defs>
+      <rect class="df-zone" x="20" y="34" width="620" height="300"/>
+      <text class="df-ztitle" x="32" y="24">COMPANION COMPUTER — RASPBERRY PI 5 · ROS 2</text>
+      <rect class="df-zone" x="664" y="34" width="196" height="150"/>
+      <text class="df-ztitle" x="676" y="24">FLIGHT CONTROLLER</text>
+      <g class="df-box"><rect x="44" y="60" width="180" height="62" rx="3"/>
+        <text x="58" y="86">shark_isr_perception</text><text class="sub" x="58" y="104">Cam 3 &rarr; Hailo-8L .hef &rarr; geo</text></g>
+      <g class="df-box"><rect x="44" y="180" width="180" height="62" rx="3"/>
+        <text x="58" y="206">shark_isr_mission</text><text class="sub" x="58" y="224">phase sequencing · arbitration</text></g>
+      <g class="df-box"><rect x="290" y="120" width="180" height="62" rx="3"/>
+        <text x="304" y="146">shark_isr_guidance</text><text class="sub" x="304" y="164">Bayes map · state machine · orbit</text></g>
+      <g class="df-box"><rect x="290" y="252" width="180" height="62" rx="3"/>
+        <text x="304" y="278">shark_isr_telemetry</text><text class="sub" x="304" y="296">logging · GCS relay</text></g>
+      <g class="df-box"><rect x="510" y="120" width="110" height="62" rx="3"/>
+        <text x="524" y="146">autopilot</text><text class="sub" x="524" y="164">sole PX4 boundary</text></g>
+      <g class="df-box"><rect x="688" y="92" width="148" height="62" rx="3"/>
+        <text x="702" y="118">PX4 — Pixhawk 6C</text><text class="sub" x="702" y="136">inner loop · tilt transition</text></g>
+      <path class="df-edge" d="M224,91 H260 V136 H290"/><text class="df-elabel" x="232" y="84">Detection.msg</text>
+      <path class="df-edge" d="M224,211 H260 V166 H290"/><text class="df-elabel" x="228" y="232">SetGuidanceMode.srv</text>
+      <path class="df-edge" d="M470,151 H510"/><text class="df-elabel" x="466" y="142">GuidanceSetpoint</text>
+      <path class="df-edge" d="M620,151 H688 V123"/><text class="df-elabel" x="628" y="142">uXRCE-DDS</text>
+      <path class="df-edge" d="M688,140 H620 V170" opacity=".5"/><text class="df-elabel" x="630" y="186">&larr; VehicleState</text>
+      <path class="df-edge" d="M380,182 V252"/><text class="df-elabel" x="388" y="222">SearchState</text>
+      <path class="df-edge" d="M380,314 V338 H870" opacity=".5"/><text class="df-elabel" x="700" y="332">SiK 915 MHz &rarr; GCS</text>
+    </svg>
+
+    <h3 style="margin-top:46px">Onboard inference pipeline <span class="badge b-plan">Bench bring-up · Phase 5/8</span></h3>
+    <div class="pipe">
+      <div class="step"><span class="mono-h">SENSE</span><p>Pi Camera Module 3 (IMX708, CSI-2) via libcamera / picamera2</p></div>
+      <div class="step"><span class="mono-h">INFER</span><p>YOLOv8n compiled to .hef on Hailo-8L NPU (13 TOPS, HailoRT) — target ~30 FPS</p></div>
+      <div class="step"><span class="mono-h">GEOLOCATE</span><p>Camera intrinsics + vehicle attitude + AGL &rarr; detection lat/lon</p></div>
+      <div class="step"><span class="mono-h">DECIDE</span><p>Confidence-gated transition in shark_isr_guidance — onboard, no downlink dependency</p></div>
+      <div class="step"><span class="mono-h">COMMAND</span><p>Offboard setpoints to PX4 over uXRCE-DDS</p></div>
+    </div>
+
+    <table style="margin-top:42px">
+      <tr><th>Layer</th><th>Owner</th><th>Responsibility</th></tr>
+      <tr><td>Inner loop, attitude, tilt transition</td><td class="mono">PX4 firmware</td><td>Stabilise, hover&harr;cruise, failsafes / RTL</td></tr>
+      <tr><td>Outer-loop guidance</td><td class="mono">shark_isr_guidance</td><td>Search map, state machine, orbit-on-detect, setpoints</td></tr>
+      <tr><td>Perception</td><td class="mono">shark_isr_perception</td><td>Onboard detector &rarr; geolocated detections</td></tr>
+      <tr><td>Mission management</td><td class="mono">shark_isr_mission</td><td>Phase sequencing, arbitration, degraded states</td></tr>
+      <tr><td>Autopilot I/O</td><td class="mono">shark_isr_autopilot</td><td>Single PX4 boundary — uXRCE-DDS, MAVLink fallback</td></tr>
+      <tr><td>Frame conventions</td><td class="mono">REP-103 ENU/FLU</td><td>All NED&harr;ENU / FRD&harr;FLU conversion confined to the autopilot package</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: ENGINEERING DECISIONS
+     To add an ADR: copy an ADR CARD block and edit.
+     ============================================================ -->
+<section id="decisions" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">04 · Engineering decisions</span>
+    <h2>Decision log</h2>
+    <p class="sub">Architecture decisions are recorded ADR-style — context, decision, rationale,
+      status — and locked before code. The log is part of the deliverable: the point is showing
+      the judgment, not just the result.</p>
+    <div class="adr">
+      <!-- ADR CARD: copy this block to add a new ADR -->
+      <div class="card"><span class="mono-h">ADR-001 · PX4 over vendor-recommended ArduPlane</span>
+        <p>Existing PX4 fluency, native ROS 2 path, tiltrotor support via control allocation.
+           Trade-off accepted and recorded: tiltrotor setup is hand-configured, not copy-paste
+           from the vendor manual.</p></div>
+      <!-- /ADR CARD -->
+      <div class="card"><span class="mono-h">ADR-002 · One autopilot boundary, uXRCE-DDS primary</span>
+        <p>All autopilot I/O isolated in a single package; MAVLink behind the same interface as
+           fallback. Swapping firmware touches one package, not the stack.</p></div>
+      <div class="card"><span class="mono-h">ADR-003 · Outer loop only in ROS 2</span>
+        <p>Attitude and tilt-transition control stay in firmware. The companion computer is never
+           in the safety-critical loop; any loss degrades to autopilot RTL/loiter.</p></div>
+      <div class="card"><span class="mono-h">ADR-004 / 009 · Interfaces frozen first</span>
+        <p>Six-interface contract (4 msg, 2 srv) specified with frames and units per field,
+           reviewed, and frozen 2026-05-31 — before any node was implemented.</p></div>
+      <div class="card"><span class="mono-h">ADR-005 · SITL-first, simulation parity</span>
+        <p>No code reaches the aircraft until it runs in PX4 SITL (Gazebo Harmonic, coastal
+           world). Safety, cost, reproducibility.</p></div>
+      <div class="card"><span class="mono-h">ADR-006 · Edge inference on Hailo-8L</span>
+        <p>Pi 5 + AI HAT+ (13 TOPS) runs the detector onboard at ~3–4 TOPS/W — the transition
+           decision needs no downlink. Thermal, 5 V-rail, and mass consequences flagged and
+           tracked against the 2.5 kg MTOW.</p></div>
+      <div class="card"><span class="mono-h">ADR-007 · Firmware-agnostic VehicleState</span>
+        <p>The autopilot package re-publishes unified vehicle state; it is the sole consumer of
+           PX4 message types among user packages.</p></div>
+      <div class="card"><span class="mono-h">ADR-008 · ENU/FLU everywhere; NED confined</span>
+        <p>All interfaces use REP-103 conventions; one package performs every frame conversion —
+           a single point of truth for a classic source of integration bugs.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: PLATFORM (deliberately subordinate)
+     ============================================================ -->
+<section id="platform">
+  <div class="wrap rv">
+    <span class="eyebrow">05 · Platform</span>
+    <h2>The vehicle the autonomy flies on</h2>
+    <p class="sub">Titan Dynamics Hornet — a 3D-printed (LW-PLA) 1.1 m tri-tiltrotor VTOL, two
+      tilting front motors, fixed rear. Built and instrumented as the test platform. The airframe
+      is the means; the autonomy is the contribution.</p>
+    <div class="grid3">
+      <div class="card brkt"><span class="mono-h">AIRFRAME</span>
+        <p class="mono" style="line-height:2.1;font-size:.82rem">Wingspan 1100 mm · MTOW 2.5 kg<br>Cruise 50–75 kph · Max L/D 22<br>Stated efficiency 2.2 Wh/km</p></div>
+      <div class="card brkt"><span class="mono-h">AVIONICS</span>
+        <p class="mono" style="line-height:2.1;font-size:.82rem">Pixhawk 6C Mini · PX4<br>Pi 5 + AI HAT+ (Hailo-8L)<br>Pi Camera Module 3 · SiK 915 MHz</p></div>
+      <div class="card brkt"><span class="mono-h">BINDING CONSTRAINT</span>
+        <p>Energy. Every onboard compute watt and payload gram trades against station time;
+           guidance favours best-L/D loiter, and mass/power budgets are tracked against MTOW
+           before flight.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: STATUS & ROADMAP
+     To update: change badge class (b-done / b-prog / b-plan) + text
+     on the relevant PHASE ROW, and the Last-updated date.
+     ============================================================ -->
+<section id="status" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">06 · Status &amp; roadmap</span>
+    <h2>Build status</h2>
+    <p class="sub">Phased, gated development: interfaces frozen before nodes, SITL before
+      hardware. Last updated <b class="mono" style="color:var(--text)">2026-06-10</b>.</p>
+
+    <!-- PHASE ROW -->
+    <div class="phase"><span class="pnum">PHASE 0</span><span class="pname">Foundation</span>
+      <span class="pdesc">Workspace scaffold, tooling, multi-agent build pipeline</span><span class="badge b-prog">In progress</span></div>
+    <!-- /PHASE ROW -->
+    <div class="phase"><span class="pnum">PHASE 1</span><span class="pname">Interface contract</span>
+      <span class="pdesc">Six interfaces specified, frames/units documented, frozen 2026-05-31, clean build on ROS 2 Humble</span><span class="badge b-done">Complete</span></div>
+    <div class="phase"><span class="pnum">PHASE 2</span><span class="pname">Simulation parity</span>
+      <span class="pdesc">Coastal Gazebo world + launch script done; PX4 SITL tiltrotor + DDS bridge verification in progress</span><span class="badge b-prog">In progress</span></div>
+    <div class="phase"><span class="pnum">PHASE 3</span><span class="pname">Autopilot bridge</span>
+      <span class="pdesc">Offboard control, mode set, failsafe verification in SITL</span><span class="badge b-plan">Planned</span></div>
+    <div class="phase"><span class="pnum">PHASE 4</span><span class="pname">Guidance</span>
+      <span class="pdesc">Coverage search, Bayesian map, detection-triggered orbit, unit-tested geometry</span><span class="badge b-plan">Planned</span></div>
+    <div class="phase"><span class="pnum">PHASE 5</span><span class="pname">Perception</span>
+      <span class="pdesc">Camera ingest, .hef detector on Hailo-8L, geolocation transform, thermal bench</span><span class="badge b-plan">Planned</span></div>
+    <div class="phase"><span class="pnum">PHASE 6</span><span class="pname">Mission management</span>
+      <span class="pdesc">State machine, arbitration, degraded-state transitions</span><span class="badge b-plan">Planned</span></div>
+    <div class="phase"><span class="pnum">PHASE 7</span><span class="pname">Telemetry &amp; integration</span>
+      <span class="pdesc">Structured logging, GCS relay, full SITL mission rehearsal</span><span class="badge b-plan">Planned</span></div>
+    <div class="phase"><span class="pnum">PHASE 8</span><span class="pname">Hardware bring-up</span>
+      <span class="pdesc">Mass/power budget vs MTOW, &#8805;5 A rail, thermal solution, bench integration, measured Wh/km, ops checklist</span><span class="badge b-plan">Planned</span></div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION: FLIGHT DEMO
+     To embed: replace the .vid div with your <iframe>/<video>.
+     ============================================================ -->
+<section id="flight">
+  <div class="wrap rv">
+    <span class="eyebrow">07 · Flight demonstration</span>
+    <h2>Flight demo</h2>
+    <p class="sub">Reserved for the autonomous mission demonstration: transit &rarr; search &rarr; detect &rarr;
+      orbit &rarr; return, with onboard logs to reconstruct every decision.</p>
+    <div class="vid brkt">
+      <span>FLIGHT DEMO — PENDING</span>
+      <span style="opacity:.55">Hardware flight follows SITL verification (Phase 8)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER — edit links here
+     ============================================================ -->
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="#">GitHub — repo link pending</a>
+      <a href="#">LinkedIn — link pending</a>
+    </div>
+    <p>Ryan H. · Electrical &amp; Aerospace Engineering, QUT · 2026.<br>
+    Airframe figures from the Titan Dynamics Hornet manual (Rev 1.1); architecture from the
+    project decision log. The browser simulation is a concept demonstration of the guidance
+    logic — it is not flight data. Capabilities marked "planned" are in development and not yet
+    demonstrated in flight.</p>
+  </div>
+</footer>
+
+<script>
+/* ================================================================
+   HERO AMBIENT — faint graticule + sweep (disabled on reduced motion)
+   ================================================================ */
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+(function(){
+  const c=document.getElementById('heroCanvas');if(!c||rm)return;
+  const x=c.getContext('2d');let w,h,t=0;
+  function rs(){w=c.width=c.offsetWidth*devicePixelRatio;h=c.height=c.offsetHeight*devicePixelRatio}
+  rs();addEventListener('resize',rs);
+  (function f(){
+    x.clearRect(0,0,w,h);
+    x.strokeStyle='rgba(69,184,172,.06)';x.lineWidth=1;
+    const g=64*devicePixelRatio;
+    for(let i=0;i<w;i+=g){x.beginPath();x.moveTo(i,0);x.lineTo(i,h);x.stroke()}
+    for(let j=0;j<h;j+=g){x.beginPath();x.moveTo(0,j);x.lineTo(w,j);x.stroke()}
+    const sx=(t*0.4)%(w+300)-150;
+    const gr=x.createLinearGradient(sx-140,0,sx+140,0);
+    gr.addColorStop(0,'rgba(69,184,172,0)');gr.addColorStop(.5,'rgba(69,184,172,.05)');gr.addColorStop(1,'rgba(69,184,172,0)');
+    x.fillStyle=gr;x.fillRect(sx-140,0,280,h);
+    t++;requestAnimationFrame(f);
+  })();
+})();
+
+/* ================================================================
+   SCROLL REVEAL
+   ================================================================ */
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.08});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+
+/* ================================================================
+   STATE MACHINE INSPECTOR — edit state copy in SM below
+   ================================================================ */
+const SM={
+TRANSIT:{c:'#5A7A94',d:'Climb-out and cruise to the patrol area under autopilot navigation. The guidance layer is armed but passive.',
+ t:[['\u2192 SEARCH','On-station: aircraft reaches the designated search area boundary'],
+    ['\u2192 RTL','Battery threshold, link loss, or operator abort — autopilot-handled']]},
+SEARCH:{c:'#45B8AC',d:'Coverage flight near best-L/D over the probability map. Each null observation updates the Bayesian grid; guidance steers toward maximum expected detection gain.',
+ t:[['\u2192 TRACK','Detection confidence \u2265 threshold \u03C4, sustained over the gating window'],
+    ['\u2192 RTL','Energy reserve reached, coverage complete, or failsafe']]},
+TRACK:{c:'#E8A33D',d:'Orbit-to-observe around the geolocated detection. Detections logged with position, confidence, timestamp; the probability map is updated positively.',
+ t:[['\u2192 SEARCH','Target lost beyond re-acquisition window, or observation objective met'],
+    ['\u2192 RTL','Energy reserve or failsafe — observation never overrides safety']]},
+RTL:{c:'#C2604F',d:'Return-to-launch / loiter, owned entirely by the PX4 autopilot. Reachable from every state; the companion computer cannot override it.',
+ t:[['Terminal','Autopilot executes recovery; mission logs preserved for review']]}};
+const smPanel=document.getElementById('smPanel');
+function smShow(s){
+  document.querySelectorAll('.sm-node').forEach(n=>n.classList.toggle('active',n.dataset.s===s));
+  const o=SM[s];
+  smPanel.innerHTML='<h3><span class="sm-dot" style="background:'+o.c+'"></span>'+s+'</h3>'+
+   '<p style="font-size:.87rem;color:#7B8C99">'+o.d+'</p>'+
+   '<ul>'+o.t.map(function(p){return '<li><b>'+p[0]+'</b><br>'+p[1]+'</li>'}).join('')+'</ul>'+
+   '<p class="note" style="margin-top:10px">Select a state to inspect its transitions.</p>';
+}
+document.querySelectorAll('.sm-node').forEach(n=>{
+  n.addEventListener('click',()=>smShow(n.dataset.s));
+  n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();smShow(n.dataset.s)}});
+});
+smShow('SEARCH');
+
+/* ================================================================
+   LIVE AUTONOMY SIMULATION
+   All tuning constants in CFG. Concept demonstration of the
+   guidance logic — simple kinematics, not a flight model.
+   ================================================================ */
+const CFG={
+  cols:32, rows:20,
+  speed:46,
+  fov:34,
+  Pd:0.78,
+  tau:0.85,
+  confUp:0.55, confDecay:0.35,
+  orbitR:42, orbitT:9,
+  battDrainS:0.55,
+  battTrackMult:1.25,
+  reserve:22
+};
+const cv=document.getElementById('simCanvas'),cx=cv.getContext('2d');
+const W=cv.width,H=cv.height,CW=W/CFG.cols,CH=H/CFG.rows;
+const ui={conf:document.getElementById('confVal'),fill:document.getElementById('confFill'),
+  batt:document.getElementById('battVal'),cov:document.getElementById('covVal'),
+  det:document.getElementById('detVal'),clk:document.getElementById('clkVal'),
+  log:document.getElementById('simLog'),overlay:document.getElementById('simOverlay')};
+let S=null,running=false,speed=1,last=0,raf=null;
+
+function init(){
+  const grid=[];
+  for(let r=0;r<CFG.rows;r++){const row=[];for(let c=0;c<CFG.cols;c++)row.push(0.5+(Math.random()-0.5)*0.12);grid.push(row)}
+  S={grid,state:'TRANSIT',
+     ac:{x:-30,y:H-40,hd:0},home:{x:30,y:H-30},
+     goal:bestCell(grid,null),conf:0,batt:100,t:0,dets:0,
+     target:spawnTarget(),trackPt:null,orbitA:0,orbitElapsed:0,trail:[],
+     ended:false};
+  log('sys','GUIDANCE ONLINE — interfaces nominal');
+  log('sys','STATE \u2192 TRANSIT · proceeding on-station');
+  setChips();
+}
+function spawnTarget(){return{c:2+Math.floor(Math.random()*(CFG.cols-4)),r:2+Math.floor(Math.random()*(CFG.rows-4)),vx:(Math.random()-.5)*.06,vy:(Math.random()-.5)*.06}}
+function bestCell(g,exclude){let b=null,bv=-1;
+  for(let r=0;r<CFG.rows;r++)for(let c=0;c<CFG.cols;c++){
+    if(exclude&&Math.hypot(c-exclude.c,r-exclude.r)<3)continue;
+    if(g[r][c]>bv){bv=g[r][c];b={c:c,r:r}}}
+  return b}
+function cellXY(p){return{x:(p.c+.5)*CW,y:(p.r+.5)*CH}}
+function log(t,m){
+  const el=document.createElement('div');el.className='e t-'+t;
+  el.textContent='T+'+fmt(S?S.t:0)+'  '+m;ui.log.appendChild(el);
+  while(ui.log.children.length>9)ui.log.removeChild(ui.log.firstChild);
+}
+function fmt(t){const m=String(Math.floor(t/60)).padStart(2,'0'),s=String(Math.floor(t%60)).padStart(2,'0');return m+':'+s}
+function setChips(){document.querySelectorAll('.chip').forEach(ch=>ch.classList.toggle('on',ch.dataset.c===S.state))}
+
+function step(dt){
+  if(S.ended)return;
+  S.t+=dt;
+  const drain=CFG.battDrainS*(S.state==='TRACK'?CFG.battTrackMult:1)*dt;
+  if(S.state!=='RTL')S.batt=Math.max(0,S.batt-drain);
+  S.target.c=Math.min(CFG.cols-1,Math.max(0,S.target.c+S.target.vx*dt*10));
+  S.target.r=Math.min(CFG.rows-1,Math.max(0,S.target.r+S.target.vy*dt*10));
+  if(S.batt<=CFG.reserve&&S.state!=='RTL'){S.state='RTL';setChips();log('rtl','ENERGY RESERVE '+CFG.reserve+'% — STATE \u2192 RTL')}
+
+  const a=S.ac,sp=CFG.speed*dt;
+  if(S.state==='TRANSIT'){
+    const g=cellXY(S.goal);steer(a,g,sp);
+    if(Math.hypot(a.x-g.x,a.y-g.y)<CFG.fov){S.state='SEARCH';setChips();log('sys','ON-STATION — STATE \u2192 SEARCH · Bayesian map active')}
+  }else if(S.state==='SEARCH'){
+    const g=cellXY(S.goal);steer(a,g,sp);
+    if(Math.hypot(a.x-g.x,a.y-g.y)<CFG.fov*0.7)S.goal=bestCell(S.grid,S.goal);
+    observe(dt);
+    if(S.conf>=CFG.tau){
+      S.state='TRACK';setChips();S.trackPt={x:a.x,y:a.y};S.orbitA=Math.atan2(a.y-S.trackPt.y,a.x-S.trackPt.x);S.orbitElapsed=0;
+      S.dets++;log('det','CONF '+S.conf.toFixed(2)+' \u2265 \u03C4 — STATE \u2192 TRACK · detection #'+S.dets+' logged');
+    }
+  }else if(S.state==='TRACK'){
+    S.orbitA+=(CFG.speed/CFG.orbitR)*dt;S.orbitElapsed+=dt;
+    a.x=S.trackPt.x+Math.cos(S.orbitA)*CFG.orbitR;
+    a.y=S.trackPt.y+Math.sin(S.orbitA)*CFG.orbitR;
+    a.hd=S.orbitA+Math.PI/2;
+    const tc=Math.floor(S.trackPt.x/CW),tr=Math.floor(S.trackPt.y/CH);
+    if(S.grid[tr]&&S.grid[tr][tc]!=null)S.grid[tr][tc]=Math.min(.97,S.grid[tr][tc]+.3*dt);
+    if(S.orbitElapsed>=CFG.orbitT){
+      S.conf=0;S.target=spawnTarget();S.goal=bestCell(S.grid,null);
+      S.state='SEARCH';setChips();log('sys','OBSERVATION COMPLETE — STATE \u2192 SEARCH');
+    }
+  }else if(S.state==='RTL'){
+    steer(a,S.home,sp);
+    if(Math.hypot(a.x-S.home.x,a.y-S.home.y)<14){
+      S.ended=true;log('rtl','RECOVERED · '+S.dets+' detection(s) · '+cov()+'% covered');
+      ui.overlay.querySelector('.big').textContent='Mission complete';
+      ui.overlay.querySelector('.note').textContent=S.dets+' detection(s) logged · '+cov()+'% area covered · logs preserved';
+      document.getElementById('simStart').textContent='\u21BB Fly again';
+      ui.overlay.classList.remove('hide');running=false;
+    }
+  }
+  if(S.state==='SEARCH'||S.state==='TRANSIT'){
+    S.conf=Math.max(0,S.conf-CFG.confDecay*dt*(inFov()?0:1));
+  }
+  S.trail.push({x:a.x,y:a.y,s:S.state});if(S.trail.length>240)S.trail.shift();
+}
+function inFov(){const t=cellXY({c:S.target.c,r:S.target.r});return Math.hypot(S.ac.x-t.x,S.ac.y-t.y)<CFG.fov}
+function observe(dt){
+  const a=S.ac;
+  for(let r=0;r<CFG.rows;r++)for(let c=0;c<CFG.cols;c++){
+    const p=cellXY({c:c,r:r});
+    if(Math.hypot(a.x-p.x,a.y-p.y)<CFG.fov){
+      const pr=S.grid[r][c];
+      S.grid[r][c]=(pr*(1-CFG.Pd))/(1-pr*CFG.Pd);
+    }
+  }
+  if(inFov()&&Math.random()<CFG.Pd*dt*2.2){S.conf=Math.min(1,S.conf+CFG.confUp*dt*3)}
+}
+function steer(a,g,sp){
+  const want=Math.atan2(g.y-a.y,g.x-a.x);
+  let d=want-a.hd;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
+  a.hd+=Math.max(-2.4*sp/CFG.speed,Math.min(2.4*sp/CFG.speed,d));
+  a.x+=Math.cos(a.hd)*sp;a.y+=Math.sin(a.hd)*sp;
+}
+function cov(){let n=0,t=CFG.cols*CFG.rows;
+  for(let r=0;r<CFG.rows;r++)for(let c=0;c<CFG.cols;c++)if(S.grid[r][c]<0.3)n++;
+  return Math.round(100*n/t)}
+
+function draw(){
+  cx.clearRect(0,0,W,H);
+  for(let r=0;r<CFG.rows;r++)for(let c=0;c<CFG.cols;c++){
+    cx.fillStyle='rgba(69,184,172,'+(0.04+S.grid[r][c]*0.42)+')';
+    cx.fillRect(c*CW+0.5,r*CH+0.5,CW-1,CH-1);
+  }
+  cx.lineWidth=1.4;
+  for(let i=1;i<S.trail.length;i++){
+    const p=S.trail[i],q=S.trail[i-1];
+    cx.strokeStyle=p.s==='TRACK'?'rgba(232,163,61,.8)':p.s==='RTL'?'rgba(194,96,79,.8)':'rgba(233,240,244,.32)';
+    cx.beginPath();cx.moveTo(q.x,q.y);cx.lineTo(p.x,p.y);cx.stroke();
+  }
+  cx.strokeStyle='rgba(233,240,244,.7)';cx.lineWidth=1.2;
+  cx.strokeRect(S.home.x-7,S.home.y-7,14,14);
+  cx.font='9px IBM Plex Mono';cx.fillStyle='rgba(123,140,153,1)';cx.fillText('HOME',S.home.x-13,S.home.y+22);
+  if(S.trackPt&&S.state==='TRACK'){
+    cx.strokeStyle='rgba(232,163,61,.9)';cx.beginPath();cx.arc(S.trackPt.x,S.trackPt.y,CFG.orbitR,0,7);cx.stroke();
+    cx.fillStyle='#E8A33D';cx.beginPath();cx.arc(S.trackPt.x,S.trackPt.y,3.4,0,7);cx.fill();
+  }
+  cx.strokeStyle='rgba(233,240,244,.55)';cx.setLineDash([4,4]);
+  cx.beginPath();cx.arc(S.ac.x,S.ac.y,CFG.fov,0,7);cx.stroke();cx.setLineDash([]);
+  const a=S.ac;cx.save();cx.translate(a.x,a.y);cx.rotate(a.hd+Math.PI/2);
+  cx.fillStyle=S.state==='TRACK'?'#E8A33D':S.state==='RTL'?'#C2604F':'#E9F0F4';
+  cx.beginPath();cx.moveTo(0,-9);cx.lineTo(6.5,7);cx.lineTo(0,3.5);cx.lineTo(-6.5,7);cx.closePath();cx.fill();
+  cx.restore();
+  ui.conf.textContent=S.conf.toFixed(2);ui.fill.style.width=(S.conf*100)+'%';
+  ui.batt.textContent=Math.round(S.batt)+'%';ui.cov.textContent=cov()+'%';
+  ui.det.textContent=S.dets;ui.clk.textContent='T+'+fmt(S.t);
+}
+function loop(ts){
+  if(!running)return;
+  const dt=Math.min(0.05,(ts-last)/1000)*speed;last=ts;
+  step(dt);draw();raf=requestAnimationFrame(loop);
+}
+document.getElementById('simStart').addEventListener('click',function(){
+  init();ui.overlay.classList.add('hide');running=true;last=performance.now();
+  cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
+});
+document.getElementById('simPause').addEventListener('click',function(e){
+  if(!S||S.ended)return;
+  running=!running;e.target.textContent=running?'Pause':'Resume';
+  if(running){last=performance.now();raf=requestAnimationFrame(loop)}
+});
+document.getElementById('simReset').addEventListener('click',function(){
+  running=false;cancelAnimationFrame(raf);
+  ui.overlay.classList.remove('hide');
+  ui.overlay.querySelector('.big').textContent='Autonomy Loop — Standby';
+  document.getElementById('simStart').textContent='\u25B6 Initialise mission';
+  document.getElementById('simPause').textContent='Pause';
+  ui.log.innerHTML='';init();draw();
+});
+document.getElementById('simSpeed').addEventListener('click',function(e){
+  speed=speed===1?2:speed===2?4:1;e.target.textContent='Speed '+speed+'\u00D7';
+});
+new IntersectionObserver(function(es){es.forEach(function(en){
+  if(!en.isIntersecting&&running){running=false;document.getElementById('simPause').textContent='Resume'}
+})},{threshold:.05}).observe(cv);
+init();draw();
+</script>
+</body>
+</html>

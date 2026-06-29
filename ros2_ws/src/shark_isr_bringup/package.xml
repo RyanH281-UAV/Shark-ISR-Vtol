@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>shark_isr_bringup</name>
+  <version>0.0.0</version>
+  <description>Launch files and aggregated params; brings the whole stack (or subsets) up.</description>
+  <maintainer email="you@example.com">Ryan Hughes</maintainer>
+  <license>TODO</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

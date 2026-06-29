@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shark-ISR — Autonomous Coastal Patrol Capability Overview</title>
+<meta name="description" content="Capability overview: an autonomous VTOL that searches a coastline, recognises sharks onboard, and observes them — without an operator in the decision loop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F2E8;--bg2:#F0E9DB;--panel:#FFFFFF;--panel2:#FAF6EC;
+  --line:#E2D9C6;--line2:#C9BDA3;
+  --text:#27434F;--bright:#10303B;--muted:#5E7682;
+  --teal:#0E7C86;--amber:#D97B25;--slate:#4F7387;--warn:#B5482E;
+  --display:'Saira Condensed',sans-serif;--body:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button{font-family:var(--mono);cursor:pointer}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+section{padding:72px 0;border-top:1px solid var(--line)}
+section.alt{background:var(--bg2)}
+h1,h2,h3{font-family:var(--display);text-transform:uppercase;letter-spacing:.045em;line-height:1.08}
+h1{font-size:clamp(2.4rem,6vw,4.2rem);font-weight:700;color:var(--bright)}
+h2{font-size:clamp(1.5rem,3vw,2.1rem);font-weight:600;color:var(--bright);margin-bottom:8px}
+h3{font-size:1rem;font-weight:600;color:var(--text);letter-spacing:.09em;margin-bottom:10px}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:14px}
+.eyebrow::before{content:"// ";color:var(--teal)}
+.sub{color:var(--muted);margin-bottom:34px;max-width:68ch;font-size:1.04rem}
+.mono{font-family:var(--mono)}
+.note{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.04em}
+.badge{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;padding:3px 9px;border-radius:2px;white-space:nowrap;vertical-align:middle}
+.b-plan{color:var(--slate);border:1px solid var(--slate)}
+.b-sim{color:var(--amber);border:1px solid var(--amber)}
+.brkt{position:relative}
+.brkt::before,.brkt::after{content:"";position:absolute;width:14px;height:14px;border:1px solid var(--line2);pointer-events:none}
+.brkt::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+.brkt::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+nav{position:sticky;top:0;background:rgba(247,242,232,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:60}
+nav .wrap{display:flex;align-items:center;gap:22px;height:52px;overflow-x:auto;scrollbar-width:none}
+nav .brand{font-family:var(--mono);font-size:.78rem;color:var(--amber);white-space:nowrap;letter-spacing:.08em}
+nav a.nl{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+nav a.nl:hover{color:var(--bright);text-decoration:none}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:22px}
+.card p{font-size:.92rem;color:var(--muted)}
+.mono-h{font-family:var(--mono);font-size:.74rem;color:var(--teal);margin-bottom:8px;display:block;letter-spacing:.06em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+header{padding:108px 0 72px;border-bottom:1px solid var(--line)}
+.hero-pitch{font-size:1.18rem;color:var(--muted);margin:22px 0 0;max-width:60ch}
+.hero-pitch strong{color:var(--text);font-weight:500}
+.capstrip{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);margin-top:48px}
+.capstrip div{padding:16px;border-right:1px solid var(--line)}
+.capstrip div:last-child{border-right:none}
+.capstrip .v{font-family:var(--display);font-size:1.45rem;color:var(--bright)}
+.capstrip .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+/* mission svg */
+.mp-svg{width:100%;height:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:3px}
+.mp-seg{cursor:pointer}
+.mp-seg .hit{fill:transparent;stroke:transparent;stroke-width:28}
+.mp-seg.active .ln{stroke:var(--amber)!important;stroke-width:3!important}
+.mp-lab{font-family:var(--mono);font-size:9.5px;fill:var(--muted);letter-spacing:.8px}
+.mp-panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px;margin-top:14px;min-height:120px}
+.mp-panel p{font-size:.92rem;color:var(--muted);margin-top:6px}
+/* fail chains */
+.fail-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.fbtn{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;padding:9px 14px;border:1px solid var(--line2);border-radius:2px;color:var(--muted);background:none}
+.fbtn.on{color:#FFFFFF;background:var(--warn);border-color:var(--warn)}
+.chain{display:flex;flex-wrap:wrap;align-items:stretch}
+.chain .node{background:var(--panel);border:1px solid var(--line2);padding:14px 16px;flex:1;min-width:170px;position:relative}
+.chain .node+.node{border-left:none}
+.chain .node+.node::before{content:"\203A";position:absolute;left:-7px;top:50%;transform:translateY(-50%);color:var(--warn);font-family:var(--mono);background:var(--bg);padding:0 2px}
+.chain .node .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+.chain .node p{font-size:.84rem;color:var(--text)}
+.chain .node.safe{border-top:2px solid var(--teal)}
+/* estimator */
+.est{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.est .ctrl,.est .out{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px}
+.est label{font-family:var(--mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:block;margin:16px 0 6px}
+.est label:first-of-type{margin-top:0}
+.est select,.est input[type=number]{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--bright);font-family:var(--mono);font-size:.85rem;padding:9px 10px;border-radius:2px}
+.est input[type=range]{width:100%;accent-color:var(--teal)}
+.est .big{font-family:var(--display);font-size:2.4rem;color:var(--bright);line-height:1}
+.est .ok{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.est .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.76rem;color:var(--muted);padding:7px 0;border-top:1px solid var(--line)}
+.est .row b{color:var(--text);font-weight:500}
+.caveat{border-left:2px solid var(--warn);padding:10px 14px;margin-top:16px;font-size:.84rem;color:var(--muted);background:var(--panel2)}
+.caveat b{color:var(--warn);font-family:var(--mono);font-size:.7rem;letter-spacing:.12em}
+footer{border-top:1px solid var(--line);padding:44px 0;font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+/* beach additions */
+.seaband{margin-top:36px;border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+.seaband svg{display:block;width:100%;height:auto}
+.imgslot{margin-top:14px;border:1.5px dashed var(--line2);border-radius:3px;background:var(--panel2);padding:36px 20px;text-align:center}
+.imgslot .t{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;display:block}
+.imgslot .s{font-family:var(--mono);font-size:.64rem;color:var(--muted);opacity:.75;display:block;margin-top:6px}
+.rv{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.rv{opacity:1;transform:none;transition:none}}
+@media (max-width:880px){
+  .grid2,.grid3,.est{grid-template-columns:1fr}
+  .capstrip{grid-template-columns:1fr 1fr}
+  .capstrip div{border-top:1px solid var(--line)}
+  section{padding:50px 0}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">SHARK-ISR · CAPABILITY</span>
+    <a class="nl" href="#what">Capability</a>
+    <a class="nl" href="#how">How It Works</a>
+    <a class="nl" href="#safety">Safety</a>
+    <a class="nl" href="#coverage">Coverage</a>
+    <a class="nl" href="#status">Status</a>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header>
+  <div class="wrap">
+    <span class="eyebrow">Capability overview · Concept of operations — product edition</span>
+    <h1>A Coastal Patrol That<br>Watches For You</h1>
+    <p class="hero-pitch">An autonomous VTOL aircraft that launches vertically from a beach or
+      vessel, searches a designated stretch of coastline, <strong>recognises sharks onboard with no
+      one watching a video feed</strong>, moves itself to observe, and reports each sighting with a
+      position and a timestamp.</p>
+    <div class="capstrip brkt">
+      <div><div class="v">Autonomous</div><div class="k">Detection decision made onboard</div></div>
+      <div><div class="v">Persistent</div><div class="k">Energy-optimised search patterns</div></div>
+      <div><div class="v">Link-proof</div><div class="k">No radio dependency to decide</div></div>
+      <div><div class="v">Accountable</div><div class="k">Every decision logged &amp; geolocated</div></div>
+    </div>
+    <p class="note" style="margin-top:14px">CONOPS-001 / PRD · DRAFT · 2026-06-11 · System in
+      staged development — see <a href="#status">Status</a>. No operational performance is claimed
+      prior to flight demonstration.</p>
+    <!-- SEA BAND — illustrative aerial scene; replace with real drone capture later -->
+    <div class="seaband brkt" aria-hidden="true">
+      <svg viewBox="0 0 960 150" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#D9EDE8"/><stop offset=".55" stop-color="#9FD1CA"/><stop offset="1" stop-color="#6FB1AB"/>
+          </linearGradient>
+          <symbol id="shk" viewBox="-110 -45 220 90">
+            <path d="M96,0 C78,-8 52,-12 34,-11 C28,-19 14,-32 2,-37 C4,-28 8,-18 13,-12 C-6,-9 -30,-6 -54,-3 C-67,-5 -83,-15 -96,-24 C-91,-13 -87,-5 -87,0 C-87,5 -91,13 -96,24 C-83,15 -67,5 -54,3 C-30,6 -6,9 13,12 C8,18 4,28 2,37 C14,32 28,19 34,11 C52,12 78,8 96,0 Z"/>
+          </symbol>
+        </defs>
+        <rect width="960" height="150" fill="url(#water)"/>
+        <g stroke="rgba(255,255,255,.35)" fill="none">
+          <path d="M-20,34 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+          <path d="M-50,84 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+          <path d="M-35,124 q30,-6 60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0 t60,0"/>
+        </g>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#16454F" opacity=".82" transform="translate(180,88) scale(.52) rotate(16)"/>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#16454F" opacity=".6" transform="translate(442,52) scale(.32) rotate(-14)"/>
+        <use href="#shk" width="220" height="90" x="-110" y="-45" fill="#12323B" opacity=".92" transform="translate(724,92) scale(.78) rotate(7)"/>
+        <g stroke="#B5482E" fill="none" stroke-width="1.6">
+          <circle cx="724" cy="92" r="56" stroke-dasharray="6 5"/>
+          <path d="M661,29 h14 M661,29 v14 M787,29 h-14 M787,29 v14 M661,155 h14 M661,155 v-14 M787,155 h-14 M787,155 v-14"/>
+        </g>
+        <text x="640" y="22" font-family="IBM Plex Mono" font-size="10" fill="#10303B" letter-spacing="1">DETECTION · CONF 0.91 · GEOLOCATED</text>
+        <text x="14" y="142" font-family="IBM Plex Mono" font-size="9" fill="#10303B" opacity=".65" letter-spacing="1.5">AERIAL SCENE — ILLUSTRATIVE</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<!-- ================= WHAT IT DOES ================= -->
+<section id="what">
+  <div class="wrap rv">
+    <span class="eyebrow">1 · The capability</span>
+    <h2>What it does — and what that replaces</h2>
+    <p class="sub">Today, aerial shark monitoring couples detection to continuous human attention:
+      a pilot flying, an observer watching live video. This system decouples them. The operator
+      tasks an area and supervises; the aircraft searches, recognises, and observes on its own.</p>
+    <div class="grid3">
+      <div class="card"><span class="mono-h">SEARCH SMART</span>
+        <p>The aircraft maintains a live probability map of where a target is most likely and flies
+        toward the highest-value water — no wasted passes over areas it has just cleared, coverage
+        biased to where it matters.</p></div>
+      <div class="card"><span class="mono-h">RECOGNISE ONBOARD</span>
+        <p>A neural detector runs on the aircraft itself. Recognition doesn't depend on a video link,
+        ground computers, or an operator's eyes — and a single false frame never triggers a response:
+        confidence must build and hold before the aircraft acts.</p></div>
+      <div class="card"><span class="mono-h">OBSERVE &amp; REPORT</span>
+        <p>On a confirmed detection the aircraft transitions itself to an observation orbit, logs the
+        sighting with position and time, and relays a report to the ground station the moment the
+        link allows.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section id="how" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">2 · How a patrol works</span>
+    <h2>One sortie, end to end <span class="note">— select a stage</span></h2>
+    <svg class="mp-svg brkt" viewBox="0 0 960 290" role="img" aria-label="Patrol stages: launch, transit, search, detect and observe, return">
+      <line x1="0" y1="252" x2="960" y2="252" stroke="#27394A" stroke-width="1.5"/>
+      <text class="mp-lab" x="14" y="272">LAUNCH SITE — BEACH / VESSEL</text>
+      <text class="mp-lab" x="846" y="272">PATROL AREA</text>
+      <g class="mp-seg" data-p="0"><path class="ln" d="M60,252 V150 C80,116 110,104 150,100" stroke="#5A7A94" stroke-width="2" fill="none"/><path class="hit" d="M60,252 V150 C80,116 110,104 150,100" fill="none"/><text class="mp-lab" x="34" y="132">1 VERTICAL LAUNCH</text></g>
+      <g class="mp-seg" data-p="1"><line class="ln" x1="150" y1="100" x2="360" y2="100" stroke="#5A7A94" stroke-width="2"/><line class="hit" x1="150" y1="100" x2="360" y2="100"/><text class="mp-lab" x="220" y="90">2 TRANSIT</text></g>
+      <g class="mp-seg" data-p="2"><path class="ln" d="M360,100 L412,80 L464,120 L516,80 L568,120 L620,80 L672,120" stroke="#45B8AC" stroke-width="2" fill="none"/><path class="hit" d="M360,100 L412,80 L464,120 L516,80 L568,120 L620,80 L672,120" fill="none"/><text class="mp-lab" x="478" y="62" fill="#45B8AC">3 SMART SEARCH</text></g>
+      <g class="mp-seg" data-p="3"><circle class="ln" cx="730" cy="100" r="34" stroke="#E8A33D" stroke-width="2" fill="none"/><circle cx="730" cy="100" r="3.4" fill="#E8A33D"/><circle class="hit" cx="730" cy="100" r="42" fill="transparent"/><text class="mp-lab" x="690" y="48" fill="#E8A33D">4 DETECT &amp; OBSERVE</text></g>
+      <g class="mp-seg" data-p="4"><path class="ln" d="M730,134 C560,190 220,184 86,170 C70,190 64,220 62,252" stroke="#5A7A94" stroke-width="2" fill="none"/><path class="hit" d="M730,134 C560,190 220,184 86,170 C70,190 64,220 62,252" fill="none"/><text class="mp-lab" x="380" y="206">5 RETURN &amp; VERTICAL RECOVERY</text></g>
+    </svg>
+    <div class="mp-panel brkt" id="mpPanel"></div>
+    <!-- IMAGE SLOT: replace with real top-down drone captures (Phase 8) -->
+    <figure class="imgslot">
+      <span class="t">Aerial capture — placeholder</span>
+      <span class="s">Reserved for real top-down detection imagery from flight test · until then, all scenes are marked illustrative</span>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= SAFETY ================= -->
+<section id="safety">
+  <div class="wrap rv">
+    <span class="eyebrow">3 · Safety by design</span>
+    <h2>What happens when something fails</h2>
+    <p class="sub">The design rule is simple: the intelligence is never allowed to be a hazard.
+      Flight-critical control lives in a certified-pattern autopilot; the autonomy can only ask,
+      never override. Whatever fails, the aircraft brings itself home. Select a failure:</p>
+    <div class="fail-btns" id="failBtns"></div>
+    <div class="chain" id="failChain"></div>
+    <p class="note" style="margin-top:14px" id="failNote"></p>
+  </div>
+</section>
+
+<!-- ================= COVERAGE ================= -->
+<section id="coverage" class="alt">
+  <div class="wrap rv">
+    <span class="eyebrow">4 · Coverage planning</span>
+    <h2>Range &amp; endurance estimator <span class="badge b-sim">First-cut planning only</span></h2>
+    <p class="sub">Built on the airframe manufacturer's cruise efficiency figure. Use it to scope
+      what a patrol could cover — and read the caveat, because these are upper bounds by
+      construction.</p>
+    <div class="est">
+      <div class="ctrl brkt">
+        <label for="battSel">Battery option</label>
+        <select id="battSel">
+          <option value="88.8">6S 4000 mAh LiPo — 88.8 Wh</option>
+          <option value="181.4">6S2P 21700 Li-ion — 181.4 Wh</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <label for="battWh" id="customLabel" style="display:none">Custom capacity (Wh)</label>
+        <input type="number" id="battWh" value="88.8" min="10" max="400" step="0.1" style="display:none">
+        <label for="dod">Usable depth of discharge — <span id="dodV" class="mono" style="color:var(--bright)">80%</span></label>
+        <input type="range" id="dod" min="50" max="95" value="80">
+        <label for="eff">Cruise efficiency (Wh/km) — manufacturer figure 2.2</label>
+        <input type="number" id="eff" value="2.2" min="0.5" max="10" step="0.1">
+        <label for="spd">Cruise speed — <span id="spdV" class="mono" style="color:var(--bright)">60 kph</span></label>
+        <input type="range" id="spd" min="50" max="75" value="60">
+      </div>
+      <div class="out brkt">
+        <div class="ok">ESTIMATED STILL-AIR RANGE</div>
+        <div class="big" id="rangeOut">—</div>
+        <div class="row"><span>Usable energy</span><b id="useOut">—</b></div>
+        <div class="row"><span>Endurance at cruise</span><b id="endOut">—</b></div>
+        <div class="row"><span>Patrol radius (out-and-back)</span><b id="radOut">—</b></div>
+        <div class="caveat"><b>&#9888; UPPER BOUNDS, NOT PROMISES</b><br>
+          Excludes vertical launch/recovery and transitions, payload effect, wind, on-station
+          loiter, and landing reserve. Measured flight data will replace these figures.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STATUS ================= -->
+<section id="status">
+  <div class="wrap rv">
+    <span class="eyebrow">5 · Where the program is</span>
+    <h2>Honest status</h2>
+    <p class="sub">Staged, gated development: the software contract was frozen first, every
+      behaviour is proven in simulation before it flies, and nothing on this page is claimed as
+      operational until it has been demonstrated in flight.</p>
+    <div class="grid3">
+      <div class="card"><span class="mono-h">DONE</span>
+        <p>System architecture locked across nine recorded design decisions. Software interface
+        contract specified and frozen. Coastal simulation environment built.</p></div>
+      <div class="card"><span class="mono-h">IN PROGRESS</span>
+        <p>Full simulation of the aircraft and autonomy stack — the gate every behaviour passes
+        before hardware.</p></div>
+      <div class="card"><span class="mono-h">AHEAD</span>
+        <p>Guidance and detection build-out in simulation, bench integration of the onboard AI
+        stack, then flight demonstration. Operation in Australia is subject to CASA requirements,
+        which will be confirmed before any flight.</p></div>
+    </div>
+    <p class="note" style="margin-top:18px">Detailed engineering: architecture, interface contract,
+      decision log, and failure analysis are documented in the engineering edition of this ConOps
+      and the project portfolio site.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>CONOPS-001 / PRD · DRAFT · 2026-06-11 · Ryan H.<br>
+    Airframe figures from the platform manufacturer's manual (Rev 1.1). Interactive elements are
+    planning aids and concept demonstrations, not flight data. This document describes a system in
+    development; no operational capability is claimed prior to flight demonstration, and any
+    operation is subject to current CASA requirements.</p>
+  </div>
+</footer>
+
+<script>
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.07});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+
+/* mission stages — product copy */
+const STAGES=[
+{n:'1 · VERTICAL LAUNCH',d:'Lifts off vertically from a beach, headland, or vessel deck — no runway, no catapult — then tilts its motors forward and becomes a fixed-wing aircraft for efficient flight.'},
+{n:'2 · TRANSIT',d:'Cruises to the designated patrol area on wings, the most energy-efficient way to cover distance. The detection system comes online and self-checks en route.'},
+{n:'3 · SMART SEARCH',d:'Searches the tasked area guided by a live probability map: water it has just cleared drops in priority, unsearched and likely water rises. Coverage goes where it counts.'},
+{n:'4 · DETECT & OBSERVE',d:'When the onboard detector is confident — sustained across many frames, not one lucky image — the aircraft transitions itself to an observation orbit, logs the sighting with position and time, and reports to the ground station.'},
+{n:'5 · RETURN & VERTICAL RECOVERY',d:'At its energy reserve or mission end, the aircraft returns, transitions back to hover, and lands vertically. Every decision of the sortie is in the logs.'}];
+const mpPanel=document.getElementById('mpPanel');
+function mpShow(i){
+  document.querySelectorAll('.mp-seg').forEach(s=>s.classList.toggle('active',+s.dataset.p===i));
+  mpPanel.innerHTML='<h3>'+STAGES[i].n+'</h3><p>'+STAGES[i].d+'</p>';
+}
+document.querySelectorAll('.mp-seg').forEach(s=>s.addEventListener('click',()=>mpShow(+s.dataset.p)));
+mpShow(2);
+
+/* failure chains — product copy */
+const FAILS={
+'Onboard computer fails':{
+ chain:[['What fails','The AI / mission computer stops mid-patrol'],
+        ['What notices','The flight controller detects commands have stopped'],
+        ['What happens','Built-in failsafe: hold position or return home'],
+        ['Outcome','Aircraft recovers itself — the AI was never flying the plane']],
+ note:'The intelligence asks; the flight controller flies. That separation is the safety case.'},
+'Radio link lost':{
+ chain:[['What fails','Connection to the ground station drops'],
+        ['What notices','The flight controller\u2019s link monitor'],
+        ['What happens','Configured failsafe: return home or hold'],
+        ['Outcome','Sightings already logged onboard are kept and relayed on reconnect']],
+ note:'The aircraft never needed the link to think — only the operator\u2019s screen goes quiet.'},
+'Battery runs low':{
+ chain:[['What fails','Energy reaches the reserve threshold'],
+        ['What notices','Two independent layers: the mission logic early, the flight controller as the hard floor'],
+        ['What happens','Patrol ends itself and the aircraft returns with margin'],
+        ['Outcome','Recovery with reserve — observation never outranks safety']],
+ note:'The mission retreats before the battery forces it to.'},
+'Detector degrades':{
+ chain:[['What fails','Detection quality drops (e.g. heat, glare)'],
+        ['What notices','Onboard health monitoring; operator advised'],
+        ['What happens','Patrol continues flagged as degraded; the confidence gate prevents false alarms'],
+        ['Outcome','A blind aircraft is still a safe aircraft — flight is unaffected']],
+ note:'Perception problems degrade the mission, never the flight.'}};
+const fb=document.getElementById('failBtns'),fc=document.getElementById('failChain'),fn=document.getElementById('failNote');
+Object.keys(FAILS).forEach((k,i)=>{
+  const b=document.createElement('button');b.className='fbtn'+(i===0?' on':'');b.textContent=k;
+  b.addEventListener('click',()=>{document.querySelectorAll('.fbtn').forEach(t=>t.classList.remove('on'));b.classList.add('on');failShow(k)});
+  fb.appendChild(b);
+});
+function failShow(k){
+  const d=FAILS[k];
+  fc.innerHTML=d.chain.map((p,i)=>'<div class="node'+(i===d.chain.length-1?' safe':'')+'"><span class="k">'+p[0]+'</span><p>'+p[1]+'</p></div>').join('');
+  fn.textContent=d.note;
+}
+failShow('Onboard computer fails');
+
+/* estimator */
+const $=id=>document.getElementById(id);
+function est(){
+  const sel=$('battSel').value;
+  const wh=sel==='custom'?parseFloat($('battWh').value)||0:parseFloat(sel);
+  $('customLabel').style.display=$('battWh').style.display=sel==='custom'?'block':'none';
+  const dod=parseInt($('dod').value)/100, eff=parseFloat($('eff').value)||2.2, spd=parseInt($('spd').value);
+  $('dodV').textContent=Math.round(dod*100)+'%';$('spdV').textContent=spd+' kph';
+  const use=wh*dod, range=use/eff, endu=range/spd;
+  $('useOut').textContent=use.toFixed(1)+' Wh';
+  $('rangeOut').textContent='\u2248 '+range.toFixed(0)+' km';
+  $('endOut').textContent='\u2248 '+(endu*60).toFixed(0)+' min';
+  $('radOut').textContent='\u2248 '+(range/2).toFixed(0)+' km';
+}
+['battSel','battWh','dod','eff','spd'].forEach(id=>$(id).addEventListener('input',est));
+est();
+</script>
+</body>
+</html>

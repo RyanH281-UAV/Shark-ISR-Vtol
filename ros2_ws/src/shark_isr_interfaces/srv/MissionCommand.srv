@@ -1,0 +1,33 @@
+# MissionCommand.srv — Operator / GCS commands to the mission manager
+#
+# Service server: shark_isr_mission
+# Client:         shark_isr_telemetry (GCS relay) or direct operator tooling
+#
+# The response tells the caller whether the command was valid and applied, and
+# what phase the mission is now in.  Ongoing status is published on SearchState.
+
+# ── Command constants ─────────────────────────────────────────────────────────
+uint8 CMD_START  = 0            # begin mission (start params below required)
+uint8 CMD_ABORT  = 1            # immediate abort → RETURN phase
+uint8 CMD_RETURN = 2            # graceful return (finish current detection log, then RTH)
+uint8 CMD_PAUSE  = 3            # pause in place (loiter), preserve state
+uint8 CMD_RESUME = 4            # resume from PAUSE
+
+uint8 command
+
+# ── Parameters for CMD_START (ignored for all other commands) ─────────────────
+float64 search_lat_deg          # [deg] WGS-84 centre of circular search area
+float64 search_lon_deg          # [deg] WGS-84
+float32 search_radius_m         # [m]   circular search area radius
+float32 transit_alt_amsl_m      # [m]   AMSL altitude for transit leg
+float32 search_alt_amsl_m       # [m]   AMSL altitude for search/loiter
+                                #       (AGL ≈ AMSL over open sea)
+float32 orbit_radius_m          # [m]   orbit radius when tracking a detection
+                                #       (0.0 → use parameter server default, typ. 50 m)
+
+---
+
+# ── Response ──────────────────────────────────────────────────────────────────
+bool   accepted                 # true if command was valid and applied
+string reason                   # human-readable rejection reason (empty if accepted)
+uint8  current_phase            # SearchState PHASE_* value after command applied

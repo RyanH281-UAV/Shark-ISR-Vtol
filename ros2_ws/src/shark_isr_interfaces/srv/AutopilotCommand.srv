@@ -1,0 +1,24 @@
+# AutopilotCommand.srv — Mission-level arm/mode commands to the autopilot bridge
+#
+# Service server: shark_isr_autopilot
+# Clients:        shark_isr_mission
+#
+# Deferred from Phase 1 per ADR-009: designed alongside the Phase 3 implementation
+# so that PX4 VehicleCommand semantics (target_system, custom_mode) are handled
+# correctly by the one package that knows about PX4 internals.
+
+# ── Command constants ─────────────────────────────────────────────────────────
+uint8 CMD_ARM        = 0    # arm motors (requires vehicle to be in a valid pre-arm state)
+uint8 CMD_DISARM     = 1    # disarm motors (only safe when landed)
+uint8 CMD_OFFBOARD   = 2    # switch to Offboard mode (begins streaming OffboardControlMode)
+uint8 CMD_HOLD       = 3    # switch to Hold/Loiter (exits Offboard; vehicle holds position)
+uint8 CMD_RTL        = 4    # Return-to-Launch (exits Offboard; PX4 handles RTL)
+uint8 CMD_LAND       = 5    # Land in place (exits Offboard)
+
+uint8 command
+
+---
+
+# ── Response ──────────────────────────────────────────────────────────────────
+bool   accepted         # true if command was valid and sent to PX4
+string reason           # human-readable rejection reason (empty if accepted)

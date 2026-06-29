@@ -1,0 +1,5 @@
+telemetry_node:
+  ros__parameters:
+    log_dir: /tmp/shark_isr_logs      # override to a persistent path on the Pi
+    flight_log_hz: 1.0                # vehicle state records per second
+    summary_hz: 1.0                   # /telemetry_summary publish rate

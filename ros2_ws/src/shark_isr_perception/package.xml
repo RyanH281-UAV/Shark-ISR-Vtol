@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>shark_isr_perception</name>
+  <version>0.1.0</version>
+  <description>Camera Module 3 ingest (libcamera/picamera2) + Hailo-8L .hef detector + pinhole geolocation. Publishes geolocated Detection messages.</description>
+  <maintainer email="you@example.com">Ryan Hughes</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>shark_isr_interfaces</depend>
+
+  <!-- numpy: available in ROS 2 Humble Python env -->
+  <!-- cv2 (opencv-python): optional, used by mock_camera_node for image loading -->
+  <!-- hailo_platform: optional, installed on Pi 5 via HailoRT SDK (real mode only) -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

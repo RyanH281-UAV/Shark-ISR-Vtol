@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+
+    # ── Simulation toggle ─────────────────────────────────────────────────────
+    # true  → mock_camera_node publishes noise/images; detector_node uses
+    #         probabilistic mock detections (no HailoRT required).
+    # false → detector_node loads hef_path via HailoRT; expects real camera frames.
+    use_sim: true
+
+    # ── Hailo model (real mode only) ─────────────────────────────────────────
+    hef_path: ""   # absolute path to .hef model file on the Pi 5
+
+    # ── Detection thresholds ─────────────────────────────────────────────────
+    confidence_threshold: 0.45     # minimum HailoRT score to publish Detection
+    mock_detection_prob:  0.02     # per-frame probability of mock detection (sim only)
+
+    # ── Camera geometry ───────────────────────────────────────────────────────
+    # Camera Module 3 Standard lens (Sony IMX708).  Diagonal FOV ~66°, half-angle 33°.
+    # These are APPROXIMATE defaults for 640×480.  Calibrate for production.
+    # At 640×480: diagonal_px = sqrt(640²+480²) = 800, f = 400/tan(33°) ≈ 616 px.
+    #
+    # Patrol altitude: 30 m AGL (ADR-010).  Ground footprint ≈ 39 m.
+    # Expected shark pixel size: ~41 px at 640 px input (above 32 px threshold).
+    image_width:  640
+    image_height: 480
+    fx: 616.0
+    fy: 616.0
+    cx: 320.0
+    cy: 240.0
+
+    # ── Mock camera (sim only) ────────────────────────────────────────────────
+    camera_fps:      10.0
+    mock_images_dir: ""   # path to dir of .png/.jpg test frames; "" = noise
