@@ -44,7 +44,6 @@ Usage
 """
 
 import argparse
-import os
 import torch  # must load before ultralytics to avoid Windows fbgemm.dll load-order bug
 from pathlib import Path
 

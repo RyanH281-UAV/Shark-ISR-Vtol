@@ -27,7 +27,7 @@ import time
 import rclpy
 from rclpy.node import Node
 
-from geometry_msgs.msg import Point, Vector3
+from geometry_msgs.msg import Point
 from std_msgs.msg import Header
 
 from shark_isr_interfaces.msg import Detection, GuidanceSetpoint, SearchState, VehicleState
@@ -84,9 +84,6 @@ class GuidanceNode(Node):
         # Transit state
         self._transit_target: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
-        # Hold position latched on entering IDLE (prevents setpoint drift).
-        self._hold_target: tuple[float, float, float] | None = None
-
         # Track state
         self._orbit_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
         self._tracked_lat: float = 0.0
@@ -124,6 +121,11 @@ class GuidanceNode(Node):
         if msg.confidence < self._det_conf_thresh:
             return
         if self._phase not in (SearchState.PHASE_SEARCH, SearchState.PHASE_TRACK):
+            return
+        if self._vehicle is None:
+            # No vehicle state → can't place the orbit; without this guard the
+            # centre defaults to ENU origin (0,0) and the aircraft flies home.
+            self.get_logger().warn('Detection ignored: no vehicle state yet')
             return
 
         det_e, det_n = 0.0, 0.0
@@ -179,20 +181,6 @@ class GuidanceNode(Node):
 
         elif self._phase == SearchState.PHASE_RETURN:
             self._update_return(pos_e, pos_n)
-
-    def _publish_hold(self, pos_e: float, pos_n: float) -> None:
-        # Latch the hold target on first call so the setpoint doesn't follow the
-        # vehicle as it drifts.
-        if self._hold_target is None:
-            self._hold_target = (pos_e, pos_n, self._vehicle.position_enu_m.z)
-        he, hn, hu = self._hold_target
-        sp = GuidanceSetpoint()
-        sp.header = self._header()
-        sp.setpoint_type = GuidanceSetpoint.TYPE_POSITION
-        sp.position_enu_m = Point(x=he, y=hn, z=hu)
-        sp.yaw_rad = float('nan')
-        sp.cruise_speed_m_s = 0.0
-        self._pub_setpoint.publish(sp)
 
     def _update_transit(self, pos_e: float, pos_n: float) -> None:
         te, tn, tu = self._transit_target
@@ -380,8 +368,6 @@ class GuidanceNode(Node):
     def _set_phase(self, phase: int) -> None:
         if self._phase in (SearchState.PHASE_SEARCH, SearchState.PHASE_TRACK):
             self._time_on_station += time.monotonic() - self._phase_start
-        if phase == SearchState.PHASE_IDLE:
-            self._hold_target = None  # re-latch on next hold publish
         self._phase = phase
         self._phase_start = time.monotonic()
 

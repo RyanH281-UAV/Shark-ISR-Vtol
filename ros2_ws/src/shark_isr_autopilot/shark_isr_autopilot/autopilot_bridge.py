@@ -191,7 +191,19 @@ class AutopilotBridge(Node):
 
     # ── Guidance setpoint callback ───────────────────────────────────────────
 
+    _KNOWN_SETPOINT_TYPES = (
+        GuidanceSetpoint.TYPE_POSITION,
+        GuidanceSetpoint.TYPE_VELOCITY,
+        GuidanceSetpoint.TYPE_ORBIT,
+    )
+
     def _cb_guidance_setpoint(self, msg: GuidanceSetpoint) -> None:
+        if msg.setpoint_type not in self._KNOWN_SETPOINT_TYPES:
+            # Dropping here keeps the heartbeat on the hold path; without it the
+            # heartbeat would publish a zeroed TrajectorySetpoint → fly to origin.
+            self.get_logger().error(
+                f'Dropped GuidanceSetpoint with unknown type {msg.setpoint_type}')
+            return
         self._guidance_setpoint = msg
         self._last_setpoint_time = self.get_clock().now()
 

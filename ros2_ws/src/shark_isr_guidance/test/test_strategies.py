@@ -98,8 +98,15 @@ def test_patrol_nominal_follows_weighted_probability():
 # ── Barrier (stub) + factory ──────────────────────────────────────────────────
 
 def test_barrier_is_stub():
+    # Stub must raise, not return [] — a silent empty plan would look like a
+    # valid "no waypoints" answer to the caller (CLAUDE.md: no silent failures).
     region = _region()
-    assert BarrierStrategy().next_waypoints(region, _map(region), (0.0, 0.0)) == []
+    try:
+        BarrierStrategy().next_waypoints(region, _map(region), (0.0, 0.0))
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError('BarrierStrategy stub should raise NotImplementedError')
 
 
 def test_strategy_factory_keys():

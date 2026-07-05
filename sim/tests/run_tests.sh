@@ -75,10 +75,12 @@ for key in "${SELECTED[@]}"; do
         echo "Unknown test: $key (valid: ${!TESTS[*]})"
         exit 1
     fi
+    # $((...)) not ((PASS++)): post-increment returns the OLD value, so ((PASS++))
+    # with PASS=0 exits 1 and set -e kills the runner after the first test.
     if run_test "$key"; then
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
         FAILED_TESTS+=("$key")
     fi
     # Inter-test gap — let SITL settle between tests

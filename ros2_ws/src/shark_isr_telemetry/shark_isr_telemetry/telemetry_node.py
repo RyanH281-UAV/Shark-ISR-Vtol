@@ -16,7 +16,7 @@ Subscriptions
 -------------
   /vehicle_state    VehicleState   — autopilot bridge telemetry
   /search_state     SearchState    — guidance layer state
-  /detections       Detection      — perception detections
+  /detection        Detection      — perception detections
 
 Publications
 ------------
@@ -182,11 +182,12 @@ class TelemetryNode(Node):
         if self._vehicle is not None:
             v = self._vehicle
             vtol = _VTOL_NAMES.get(v.vtol_phase, '?')
-            batt_pct = int(v.battery_fraction * 100)
+            # -1.0 = bridge's "no battery message yet" sentinel, not -100%
+            batt = f'{v.battery_fraction:.0%}' if v.battery_fraction >= 0.0 else '?'
             parts.append(
                 f'POS lat={v.latitude_deg:.4f} lon={v.longitude_deg:.4f} '
                 f'alt={v.altitude_amsl_m:.0f}m agl={v.agl_m:.0f}m '
-                f'gs={v.groundspeed_m_s:.1f}m/s {vtol} batt={batt_pct}%'
+                f'gs={v.groundspeed_m_s:.1f}m/s {vtol} batt={batt}'
             )
         else:
             parts.append('POS: no vehicle state')
