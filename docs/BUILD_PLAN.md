@@ -71,6 +71,9 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [ ] Full mission rehearsal in SITL; review logs (SITL check pending — needs WSL + PX4)
 
 ## Phase 8 — Hardware bring-up (post-budget)
+
+> Expanded into a full bench + flight test campaign: **docs/HARDWARE_BRINGUP.md**
+> (bench tests B01–B24, flight tests F01–F08). Items below map to those tests.
 - [ ] Mass + power budget vs MTOW (docs/HORNET_PLATFORM.md)
 - [ ] Spec/source a ≥5 A 5 V rail (owned LM2596S 3 A likely insufficient)
 - [ ] Thermal solution for Pi 5 + AI HAT+ in the fuselage (active cooler + airflow); verify no throttling
