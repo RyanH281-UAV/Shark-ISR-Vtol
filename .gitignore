@@ -42,3 +42,9 @@ site-v2/SITE_UPGRADE.md
 # Training run artifacts with embedded local paths
 training/train_log.txt
 training/train_run.log
+
+# Claude Code session config (local)
+.claude/
+
+# Heavy local render sources (4K stills / mp4) — not for the public repo
+site-v2/public/assets/

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  /* paper — the documentation surface */
+  --color-paper: #f6f8fa;
+  --color-card: #ffffff;
+  --color-ink: #0e1b2c;
+  --color-mute: #4a5d72;
+  --color-line: #d7dfe8;
+
+  /* navy — the instrument surface (hero, 3D plates, footer) */
+  --color-navy: #0b1e33;
+  --color-navy-2: #122a45;
+  --color-fgd: #edf3f8;
+  --color-muted: #93a7ba;
+  --color-lined: rgba(150, 170, 190, 0.18);
+
+  /* mission-state tokens (SITE_UPGRADE.md) — raw for fills on navy,
+     -ink variants meet 4.5:1 as text on paper */
+  --color-search: #45b8ac;
+  --color-search-ink: #1e6e65;
+  --color-track: #e8a33d;
+  --color-track-ink: #8f5d0e;
+  --color-rtl: #c2604f;
+  --color-rtl-ink: #9c4130;
+  --color-transit: #5a7a94;
+  --color-transit-ink: #43607a;
+
+  --font-display: var(--font-saira), system-ui, sans-serif;
+  --font-body: var(--font-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-serif: var(--font-fraunces), serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(69, 184, 172, 0.3);
+}
+
+/* thin scanline texture over instrument plates */
+.scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.14) 4px
+  );
+}
+
+/* pulsing skeleton for canvas loading states */
+.skeleton {
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
