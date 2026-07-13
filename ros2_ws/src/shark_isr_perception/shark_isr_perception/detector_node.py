@@ -55,6 +55,11 @@ class DetectorNode(Node):
         self.declare_parameter("hef_path", "")
         self.declare_parameter("confidence_threshold", 0.45)
         self.declare_parameter("mock_detection_prob", 0.02)
+        # Frames a mock detection persists once triggered. A real target stays
+        # in the footprint for ~2-3 s of frames, and the guidance confidence
+        # gate (ADR-016) requires sustained evidence — a single mock frame
+        # would (correctly) never transition.
+        self.declare_parameter("mock_burst_frames", 30)
         self.declare_parameter("image_width", 640)
         self.declare_parameter("image_height", 480)
         self.declare_parameter("fx", 616.0)
@@ -65,6 +70,8 @@ class DetectorNode(Node):
         self._use_sim: bool = self.get_parameter("use_sim").value
         self._conf_thresh: float = self.get_parameter("confidence_threshold").value
         self._mock_prob: float = self.get_parameter("mock_detection_prob").value
+        self._mock_burst_frames: int = self.get_parameter("mock_burst_frames").value
+        self._mock_burst_remaining: int = 0
         self._img_w: int = self.get_parameter("image_width").value
         self._img_h: int = self.get_parameter("image_height").value
         self._fx: float = self.get_parameter("fx").value
@@ -101,7 +108,13 @@ class DetectorNode(Node):
     # Sim mode
 
     def _run_sim_detection(self, stamp) -> None:
-        if random.random() > self._mock_prob:
+        # A trigger starts a burst: the mock target stays "in view" for
+        # mock_burst_frames consecutive frames, like a real overflight.
+        if self._mock_burst_remaining > 0:
+            self._mock_burst_remaining -= 1
+        elif random.random() <= self._mock_prob:
+            self._mock_burst_remaining = max(0, self._mock_burst_frames - 1)
+        else:
             return
 
         # Publish a mock detection near image centre with some jitter
@@ -206,18 +219,35 @@ class DetectorNode(Node):
         arr = data.reshape((msg.height, msg.width, 3))
         return arr.astype(np.float32) / 255.0
 
-    def _hailo_forward(self, frame: np.ndarray) -> list:
-        """Run HailoRT inference; return list of (bbox_norm, confidence)."""
-        # Resize to model input (640×640 with letterboxing)
-        try:
-            import cv2  # type: ignore
+    _MODEL_SIZE = 640  # .hef input side (square)
 
-            resized = cv2.resize(frame, (640, 640))
-        except ImportError:
-            resized = frame
+    def _letterbox(self, frame: np.ndarray) -> tuple[np.ndarray, float, int, int]:
+        """Scale-preserving resize onto a 640×640 canvas (grey pad).
+
+        Returns (canvas, scale, pad_x, pad_y) so detections can be mapped back.
+        A plain cv2.resize would stretch 640×480 by 1.33× vertically — every
+        bbox (and the geolocation ray derived from it) would be distorted.
+        """
+        import cv2  # type: ignore  # required in real mode; fail loudly if absent
+
+        h, w = frame.shape[:2]
+        s = self._MODEL_SIZE / max(h, w)
+        nw, nh = round(w * s), round(h * s)
+        canvas = np.full(
+            (self._MODEL_SIZE, self._MODEL_SIZE, 3), 0.447, dtype=frame.dtype)
+        pad_x = (self._MODEL_SIZE - nw) // 2
+        pad_y = (self._MODEL_SIZE - nh) // 2
+        canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = cv2.resize(frame, (nw, nh))
+        return canvas, s, pad_x, pad_y
+
+    def _hailo_forward(self, frame: np.ndarray) -> list:
+        """Run HailoRT inference; return list of (bbox_norm, confidence),
+        bboxes normalised to the ORIGINAL frame (letterbox removed)."""
+        img_h, img_w = frame.shape[:2]
+        canvas, scale, pad_x, pad_y = self._letterbox(frame)
 
         input_data = {
-            list(self._hailo_input_params.keys())[0]: np.expand_dims(resized, 0)
+            list(self._hailo_input_params.keys())[0]: np.expand_dims(canvas, 0)
         }
 
         with self._hailo_infer(
@@ -229,21 +259,28 @@ class DetectorNode(Node):
             output = infer_pipeline.get_output()
 
         # Parse output — format depends on the .hef model (YOLO-style: cx,cy,w,h,conf,class...)
-        # This is a placeholder; adapt to the actual model output layer shape.
+        # This is a placeholder; adapt to the actual model output layer shape
+        # on the bench (HARDWARE_BRINGUP B08) before real use.
+        def unletterbox(v: float, pad: int, dim: int) -> float:
+            """Canvas-normalised coord → original-frame-normalised coord."""
+            px = v * self._MODEL_SIZE            # canvas pixels
+            return min(1.0, max(0.0, (px - pad) / scale / dim))
+
         results = []
         for layer in output.values():
             arr = np.array(layer).flatten()
-            # Example: assume flat [x1, y1, x2, y2, conf, class_id, ...] per detection
+            # Example: assume flat [x1, y1, x2, y2, conf, class_id, ...] per detection,
+            # coords normalised to the 640×640 letterboxed canvas.
             stride = 6
             for i in range(0, len(arr) - stride + 1, stride):
                 conf = float(arr[i + 4])
                 cls = int(arr[i + 5])
                 if cls == 0 and conf >= self._conf_thresh:
                     bbox = (
-                        float(arr[i]),
-                        float(arr[i + 1]),
-                        float(arr[i + 2]),
-                        float(arr[i + 3]),
+                        unletterbox(float(arr[i]), pad_x, img_w),
+                        unletterbox(float(arr[i + 1]), pad_y, img_h),
+                        unletterbox(float(arr[i + 2]), pad_x, img_w),
+                        unletterbox(float(arr[i + 3]), pad_y, img_h),
                     )
                     results.append((bbox, conf))
         return results

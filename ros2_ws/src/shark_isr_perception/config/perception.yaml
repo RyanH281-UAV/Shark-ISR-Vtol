@@ -8,11 +8,18 @@
     use_sim: true
 
     # ── Hailo model (real mode only) ─────────────────────────────────────────
-    hef_path: ""   # absolute path to .hef model file on the Pi 5
+    # Absolute path to the .hef on the Pi 5. Compiled artifact lives at
+    # training/runs/detect/train/weights/shark_detector.hef — scp to the Pi and
+    # point this at it during bench bring-up (HARDWARE_BRINGUP B08).
+    hef_path: ""
 
     # ── Detection thresholds ─────────────────────────────────────────────────
     confidence_threshold: 0.45     # minimum HailoRT score to publish Detection
-    mock_detection_prob:  0.02     # per-frame probability of mock detection (sim only)
+    mock_detection_prob:  0.02     # per-frame probability a mock burst starts (sim only)
+    # Frames a mock detection persists once triggered — models a real target
+    # staying in the footprint, and gives the guidance confidence gate
+    # (ADR-016) the sustained evidence it requires.
+    mock_burst_frames:    30
 
     # ── Camera geometry ───────────────────────────────────────────────────────
     # Camera Module 3 Standard lens (Sony IMX708).  Diagonal FOV ~66°, half-angle 33°.
