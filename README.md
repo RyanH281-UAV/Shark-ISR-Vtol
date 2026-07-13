@@ -22,15 +22,17 @@ Titan Dynamics Hornet fuselage. Camera faces down through the nose aperture.*
 Small drones can already fly search patterns. The gap this project targets is the **decision**:
 
 **01 — Persistent coverage**
-The swim zone is covered by a threat-weighted persistent patrol — shore-parallel sweeps, denser
-inshore where sharks are, with a revisit bound so no water goes stale. Probability re-grows as a
-target could move in, so guidance returns instead of chasing one greedy peak. Coverage, not a
-one-shot find. SITL-verified in T10.
+The swim zone is covered by a threat-weighted persistent patrol with a hard revisit bound, so no
+water goes stale. Probability re-grows as a target could move in, so guidance returns instead of
+chasing one greedy peak. Coverage, not a one-shot find. Implemented and unit-tested (ADR-012);
+the SITL campaign verified the boustrophedon coverage baseline (T10) — the patrol strategy's own
+SITL re-run is the next gate.
 
 **02 — Confidence-gated transition**
 Detections accumulate confidence across frames and decay on misses. Only a sustained crossing of
 threshold τ triggers the autonomous SEARCH → TRACK transition and orbit-on-detect. One lucky frame
-never flies the aircraft. SITL-verified in T11.
+never flies the aircraft. Implemented in guidance (ADR-016) and unit-tested; T11 verified the
+detection→TRACK chain single-shot — re-run with the gate is the next SITL check.
 
 **03 — Onboard, link-independent**
 The detector (YOLOv8n compiled to a Hailo `.hef`) runs on a 13-TOPS NPU on the aircraft. Losing
@@ -154,7 +156,9 @@ before any sim run — validating the SITL-first rule.
 SITL runs the real ROS 2 nodes against a simulated PX4 autopilot and Gazebo Harmonic world.
 It is the project's release gate: **no code reaches the aircraft until it has passed in SITL.**
 T01–T05 (DDS bridge, arming, takeoff, loiter) passed in a prior campaign. T06–T11 cover the full
-mission stack:
+mission stack. *2026-07-13: the confidence gate (ADR-016) and persistent-patrol strategy (ADR-012)
+are now wired into guidance — T10/T11 re-run with the new behaviours is the next SITL gate before
+those two claims count as sim-verified.*
 
 | Test | Proves | Evidence |
 |---|---|---|

@@ -4,8 +4,8 @@ Phased build checklist — `[ ]` todo, `[~]` in progress, `[x]` done.
 Do not jump phases — interfaces are frozen before nodes are built; SITL precedes hardware.
 
 ## Phase 0 — Foundation
-- [ ] Run `scripts/scaffold.sh` to create the ROS 2 workspace skeleton + module READMEs
-- [ ] `colcon build` succeeds on the empty packages
+- [x] Run `scripts/scaffold.sh` to create the ROS 2 workspace skeleton + module READMEs
+- [x] `colcon build` succeeds on the empty packages
 
 ## Phase 1 — Interface contract (ADR-004)
 - [x] Specify `Detection.msg`, `SearchState.msg`, `GuidanceSetpoint.msg`, `MissionCommand.srv`
@@ -15,11 +15,11 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [x] Freeze: interfaces reviewed, locked, and `colcon build --packages-select shark_isr_interfaces` passes clean (ROS 2 Humble, 2026-05-31)
 
 ## Phase 2 — Simulation parity (ADR-005)
-- [~] PX4 SITL Tiltrotor VTOL (airframe 4020 gz_tiltrotor, PX4 v1.16, Gazebo Harmonic gz-sim 8)
-- [~] micro XRCE-DDS agent (snap `micro-xrce-dds-agent --edge`) + `px4_msgs release/1.16` in workspace
+- [x] PX4 SITL Tiltrotor VTOL (airframe 4020 gz_tiltrotor, PX4 v1.16, Gazebo Harmonic gz-sim 8)
+- [x] micro XRCE-DDS agent (snap `micro-xrce-dds-agent --edge`) + `px4_msgs release/1.16` in workspace
 - [x] Gazebo coastal world: `sim/worlds/shark_isr_coastal.sdf` (Cottesloe Beach, Perth WA; ocean surface)
 - [x] `scripts/run_sim.sh` — shark-ISR labelled, isolated from SkimWing, starts agent + SITL
-- [ ] End-to-end verify: `ros2 topic list | grep fmu` shows PX4 uORB topics via DDS bridge
+- [x] End-to-end verify: `ros2 topic list | grep fmu` shows PX4 uORB topics via DDS bridge (campaign T06–T11)
 
 ## Phase 3 — Autopilot bridge (ADR-002)
 - [x] `AutopilotCommand.srv` added to `shark_isr_interfaces` (deferred from Phase 1, ADR-009)
@@ -48,7 +48,7 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [x] `geolocate.py` — pinhole + flat-earth geolocation (no ROS deps, unit-tested)
 - [x] `setup.py`, `package.xml`, `config/perception.yaml`, `launch/perception.launch.py`
 - [x] `test/test_geolocate.py` — 9 tests (centre, offset, AGL scaling, error cases); 9/9 pass
-- [ ] `.hef` model: compile/obtain Hailo Model Zoo YOLO variant; update `hef_path` in config
+- [~] `.hef` model: **compiled** (`training/runs/detect/train/weights/shark_detector.hef`, YOLOv8n, ADR-013); on-Pi deploy + `hef_path` update pending (B08)
 - [x] `colcon build --packages-select shark_isr_perception` passes in WSL
 - [x] SITL end-to-end: launch perception (sim) → mock Detection published → guidance receives (T11)
 - [ ] Bench thermal/throughput: sustained inference on Pi 5 + AI HAT+ without throttling (Phase 8)
@@ -68,7 +68,8 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 ## Phase 7 — Telemetry & integration
 - [x] `shark_isr_telemetry`: structured logging of flight + detections + decisions
 - [x] GCS/operator summary relay (`/telemetry_summary` String at 1 Hz)
-- [ ] Full mission rehearsal in SITL; review logs (SITL check pending — needs WSL + PX4)
+- [x] Full mission rehearsal in SITL; logs reviewed (T10, campaign 2026-06/07)
+- [ ] Re-run T10/T11 with confidence gate (ADR-016) + persistent patrol (ADR-012) — wired 2026-07-13
 
 ## Phase 8 — Hardware bring-up (post-budget)
 

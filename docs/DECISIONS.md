@@ -223,23 +223,30 @@ Format per entry: context, decision, rationale, status.
 - **Rationale:** Strategy is a config choice, not a rewrite. PersistentPatrol's hard revisit
   bound is the differentiator for beach ISR: it guarantees worst-case freshness, not just
   expected freshness. The strip region reflects real beach geometry.
-- **Status:** Implemented + unit-tested (44/44 pass, 2026-06-18). **Not yet wired into
-  `guidance_node`** — integration pending post-SITL campaign.
+- **Status:** Implemented + unit-tested (2026-06-18). **Wired into `guidance_node` 2026-07-13**
+  behind the `search_strategy` param (default `persistent_patrol`; `lawnmower` keeps the
+  T10-verified fixed-path baseline). `decay_observation` (probability re-growth) now runs every
+  search tick. SITL re-run of T10 with the patrol strategy pending.
 
 ---
 
-### ADR-013 — Shark detection: YOLOv8s fine-tuned on beach imagery
+### ADR-013 — Shark detection: YOLOv8n fine-tuned on beach imagery
 
 - **Context:** The Hailo-8L detector requires a `.hef`-compiled model. A YOLO variant is the
-  pragmatic choice (Hailo Model Zoo support; real-time capable at edge).
-- **Decision:** Fine-tune **YOLOv8s** on a curated beach/aerial shark dataset. Training
-  pipeline lives in `training/`. Model compiled to `.hef` with the Hailo Dataflow Compiler for
-  deployment to the AI HAT+.
-- **Rationale:** YOLOv8s balances accuracy and inference speed for 13 TOPS; pre-trained weights
-  reduce data requirements. Fine-tuning on domain imagery is required because the base model has
-  no beach-aerial shark class.
-- **Status:** Training pipeline built. Dataset split fixed (see ADR-014). `.hef` compilation and
-  `hef_path` deployment pending (Phase 5/8).
+  pragmatic choice (Hailo Model Zoo support; real-time capable at edge). YOLOv8s was the initial
+  candidate; the trained model is **YOLOv8n** (`training/runs/detect/train/args.yaml`).
+- **Decision:** Fine-tune **YOLOv8n** on the curated beach/aerial shark dataset. Training
+  pipeline lives in `training/` (`03_train.py` still accepts `--model yolov8s.pt` for a larger
+  offline variant). Model compiled to `.hef` with the Hailo Dataflow Compiler for the AI HAT+.
+- **Rationale:** Energy is the binding resource (CLAUDE.md): the nano backbone is the smallest
+  model that clears the pixel budget (ADR-010: ~41 px target at 640 px input), and on a 13-TOPS
+  INT8 NPU it buys frame rate and watts over YOLOv8s. Held-out results (mAP50 0.945, recall 95%)
+  show the nano capacity is not the limiting factor — dataset honesty was (ADR-014). Fine-tuning
+  is required because no base model has a beach-aerial shark class.
+- **Status:** Trained on the leakage-free split; compiled to
+  `training/runs/detect/train/weights/shark_detector.hef` (9 MB, hailo8l). On-Pi deployment
+  (`hef_path`) and throughput measurement pending Phase 8 bench (B08). Updated 2026-07-13 to
+  match the trained artifact — earlier text said YOLOv8s.
 
 ---
 
@@ -275,6 +282,28 @@ Format per entry: context, decision, rationale, status.
   YAML preset in `config/mission.yaml`. (c) `shark_isr_telemetry`'s "GCS relay" claim is
   satisfied by the QGC connection, not by the `/telemetry_summary` String topic alone.
 - **Status:** Decision locked (2026-06-18). Implementation pending (Phase GCS — after SITL).
+
+---
+
+### ADR-016 — SEARCH → TRACK confidence gate: sustained evidence, not single frames
+
+- **Context:** `guidance_node` transitioned to TRACK on any single detection ≥ 0.70 — one lucky
+  frame could fly the aircraft to a whitecap. The public materials (README, site) had long
+  described an accumulate/decay rule, but it existed only in the site's demo model
+  (`site-v2/lib/guidance.ts`), not in the stack.
+- **Decision:** A `ConfidenceGate` (pure math, `shark_isr_guidance/confidence_gate.py`) gates the
+  transition: each detection adds `gain × confidence`; every guidance tick subtracts `decay`;
+  SEARCH → TRACK fires only after the score holds ≥ `tau` for `k_sustain` consecutive ticks.
+  In TRACK, score ≤ `lost` (evidence gone) returns guidance to SEARCH; the mission-level
+  `track_timeout_s` remains as backstop. Constants (τ=0.85, K=6, gain=0.12, decay=0.05,
+  lost=0.25) mirror the site model so the demo and the aircraft run the same rule. Gate applies
+  only to detection-entered TRACK — a commanded `MODE_ORBIT` is never kicked back to SEARCH.
+- **Consequences:** (a) `detector_node` sim mode emits *bursts* (`mock_burst_frames`, default 30)
+  instead of single frames — a real target stays in the footprint for seconds, and the gate
+  correctly ignores isolated blips. (b) T10 now asserts both halves: a 5-frame burst must NOT
+  transition; a 30-frame stream must. (c) Unit-tested (`test_confidence_gate.py`); SITL re-run of
+  T10/T11 pending.
+- **Status:** Locked (2026-07-13).
 
 ---
 
