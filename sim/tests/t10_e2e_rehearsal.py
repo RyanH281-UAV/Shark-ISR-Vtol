@@ -158,22 +158,37 @@ def _run(node: Node) -> int:
     print(f'[T10] Search at t+{time.monotonic() - t_start:.1f}s')
 
     time.sleep(1.0)
-    print('[T10] Injecting Detection (geo_valid=False → orbit at vehicle pos)...')
-    det = Detection()
-    det.header = Header(frame_id='camera_optical')
-    det.object_class = Detection.CLASS_SHARK
-    det.confidence = 0.95
-    det.bbox_x_min, det.bbox_y_min = 0.4, 0.4
-    det.bbox_x_max, det.bbox_y_max = 0.6, 0.6
-    det.geo_valid = False
-    for _ in range(5):
-        det.header.stamp = node.get_clock().now().to_msg()
-        pub_det.publish(det)
-        time.sleep(0.1)
+
+    def inject(n_frames: int) -> None:
+        det = Detection()
+        det.header = Header(frame_id='camera_optical')
+        det.object_class = Detection.CLASS_SHARK
+        det.confidence = 0.95
+        det.bbox_x_min, det.bbox_y_min = 0.4, 0.4
+        det.bbox_x_max, det.bbox_y_max = 0.6, 0.6
+        det.geo_valid = False  # → orbit at vehicle pos
+        for _ in range(n_frames):
+            det.header.stamp = node.get_clock().now().to_msg()
+            pub_det.publish(det)
+            time.sleep(0.1)
+
+    # Confidence gate (ADR-016), negative half: a short burst is one lucky
+    # blip — it must NOT transition the aircraft.
+    print('[T10] Injecting 5-frame burst (must NOT trigger TRACK)...')
+    inject(5)
+    if ev['track'].wait(5):
+        print('\033[31mFAIL: 5-frame burst triggered TRACK — confidence gate '
+              'not enforcing sustained crossing\033[0m')
+        return 1
+    print('[T10] Gate held (no TRACK on short burst) ✓')
+
+    # Positive half: sustained evidence (~3 s of frames) must transition.
+    print('[T10] Injecting 30-frame sustained stream (must trigger TRACK)...')
+    inject(30)
 
     print('[T10] Waiting for PHASE_TRACK...')
     if not ev['track'].wait(min(15, remaining())):
-        print('\033[31mFAIL: did not enter TRACK within 15s of injection\033[0m')
+        print('\033[31mFAIL: did not enter TRACK within 15s of sustained stream\033[0m')
         return 1
     if timed_out('track'):
         return 1

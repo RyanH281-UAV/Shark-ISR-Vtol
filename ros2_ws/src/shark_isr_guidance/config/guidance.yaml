@@ -6,22 +6,51 @@ guidance_node:
     # SearchState publish rate [Hz] — consumed by mission and telemetry.
     state_hz: 2.0
 
-    # Sensor swath width used for boustrophedon row spacing [m].
-    # Camera Module 3 at 50 m AGL with ~70° HFOV ≈ 70 m swath.
-    # 60 m gives ~15% overlap.
-    strip_width_m: 60.0
+    # Sensor swath used for lane spacing [m].
+    # ADR-010: patrol at 30 m AGL, Camera Module 3 Standard lens (4:3 IMX708,
+    # ~66° diagonal → ~55° horizontal FOV). Cross-track footprint at 30 m AGL
+    # ≈ 2 × 30 × tan(27.5°) ≈ 31 m; 25 m spacing gives ~20% overlap.
+    # (The old 60 m value was sized for 50 m AGL / 70° HFOV and left a ~30 m
+    # unscanned corridor between lanes at the ADR-010 altitude.)
+    strip_width_m: 25.0
 
     # Horizontal distance from waypoint at which arrival is declared [m].
     arrival_threshold_m: 15.0
 
-    # Minimum Detection.confidence to trigger orbit-on-detect.
+    # Minimum Detection.confidence to feed the confidence gate.
     detection_confidence_threshold: 0.70
+
+    # ── Confidence gate (ADR-016) ─────────────────────────────────────────────
+    # SEARCH → TRACK only after the evidence score holds ≥ gate_tau for
+    # gate_k_sustain consecutive guidance ticks. Detections add
+    # gate_gain × confidence; every tick subtracts gate_decay. In TRACK,
+    # score ≤ gate_lost means the target is gone → resume SEARCH.
+    # Values mirror the site decision model (site-v2/lib/guidance.ts).
+    gate_tau: 0.85
+    gate_k_sustain: 6
+    gate_gain: 0.12
+    gate_decay: 0.05
+    gate_lost: 0.25
+
+    # ── Search strategy (ADR-012) ─────────────────────────────────────────────
+    # lawnmower         — fixed boustrophedon (SITL-verified baseline, T10)
+    # persistent_patrol — DEFAULT: threat-weighted patrol, hard revisit bound
+    # bayesian_greedy   — highest-probability cell (SAR / first-find)
+    search_strategy: persistent_patrol
+    # Hard revisit bound T [s]: any cell unobserved longer than this becomes
+    # the forced next target (persistent_patrol only).
+    revisit_bound_s: 300.0
+    # Probability re-growth toward the prior [1/s] — cleared water doesn't
+    # stay cleared; targets move.
+    regrowth_alpha: 0.001
 
     # Orbit radius when tracking a detection [m].
     orbit_radius_m: 50.0
 
     # Sensor footprint half-width for Bayesian null-observation updates [m].
-    footprint_radius_m: 35.0
+    # Half the 31 m cross-track footprint at 30 m AGL (ADR-010), rounded down —
+    # claims slightly less coverage than the camera sees, never more.
+    footprint_radius_m: 12.0
 
     # Probability of detecting a shark when it is inside the sensor footprint.
     p_detection: 0.85
