@@ -86,12 +86,21 @@ class AutopilotBridge(Node):
         self.declare_parameter('offboard_hz', 20.0)
         self.declare_parameter('vehicle_state_hz', 20.0)
         self.declare_parameter('setpoint_timeout_s', 2.0)
+        # SAFETY: force-arm bypasses PX4 preflight checks. Only for SITL
+        # bring-up (GPS/estimator warm-up); a real aircraft must arm through
+        # the full preflight gate. Default False; sitl launch config sets True.
+        self.declare_parameter('sitl_force_arm', False)
 
         self._sys_id = self.get_parameter('mav_sys_id').value
         self._comp_id = self.get_parameter('mav_comp_id').value
         _ob_hz = self.get_parameter('offboard_hz').value
         _vs_hz = self.get_parameter('vehicle_state_hz').value
         self._setpoint_timeout = self.get_parameter('setpoint_timeout_s').value
+        self._force_arm = self.get_parameter('sitl_force_arm').value
+        if self._force_arm:
+            self.get_logger().warn(
+                'sitl_force_arm=true — ARM will BYPASS PX4 preflight checks. '
+                'SITL only; never fly hardware with this set.')
 
         # ── State ────────────────────────────────────────────────────────────
         self._local_pos: VehicleLocalPosition | None = None
@@ -364,7 +373,8 @@ class AutopilotBridge(Node):
         # Velocity (NED → ENU)
         vex, vey, vez = ned_to_enu(float(lp.vx), float(lp.vy), float(lp.vz))
         vs.velocity_enu_m_s = Vector3(x=vex, y=vey, z=vez)
-        vs.groundspeed_m_s = math.sqrt(lp.vx ** 2 + lp.vy ** 2)
+        vs.groundspeed_m_s = (
+            math.sqrt(lp.vx ** 2 + lp.vy ** 2) if lp.v_xy_valid else 0.0)
 
         # Attitude (NED/FRD quaternion → ENU/FLU)
         q = att.q  # [w, x, y, z] in PX4
@@ -463,17 +473,19 @@ class AutopilotBridge(Node):
     # ── VehicleCommand helpers ────────────────────────────────────────────────
 
     def _send_arm(self, arm: bool) -> None:
+        force = arm and self._force_arm
         cmd = self._make_vehicle_command(
             command=400,    # MAV_CMD_COMPONENT_ARM_DISARM
             param1=1.0 if arm else 0.0,
-            param2=21196.0 if arm else 0.0,  # force arm: bypasses preflight checks
+            param2=21196.0 if force else 0.0,  # 21196 = force: bypass preflight checks
         )
-        # from_external=False: PX4 arm(reason, from_external || !forced) — with
-        # from_external=True the force flag is ignored and preflight checks always run.
-        # Internal command matches what `commander arm -f` does in pxh>.
-        cmd.from_external = False
+        if force:
+            # from_external=False: PX4 arm(reason, from_external || !forced) — with
+            # from_external=True the force flag is ignored and preflight checks always
+            # run. Internal command matches what `commander arm -f` does in pxh>.
+            cmd.from_external = False
         self._pub_vehicle_cmd.publish(cmd)
-        self.get_logger().info(f'Sent ARM={arm}')
+        self.get_logger().info(f'Sent ARM={arm}' + (' (forced, SITL)' if force else ''))
 
     # PX4 custom mode encoding for MAV_CMD_DO_SET_MODE:
     #   param2 = main mode, param3 = sub mode (sub mode only used when main = AUTO).

@@ -79,9 +79,6 @@ class MissionNode(Node):
         self._phase_start: float = 0.0
         self._low_battery_triggered = False
 
-        # Pending futures for async service calls
-        self._pending: dict = {}
-
         # ── Callback group (allows service calls from timer callbacks) ───────
         self._cb = ReentrantCallbackGroup()
 
@@ -205,11 +202,17 @@ class MissionNode(Node):
             self._search_lat = request.search_lat_deg
             self._search_lon = request.search_lon_deg
             self._search_radius = request.search_radius_m or 200.0
-            self._transit_alt = request.transit_alt_amsl_m or 50.0
-            self._search_alt = request.search_alt_amsl_m or 50.0
+            # Altitude defaults follow ADR-010 (30 m AGL patrol).
+            self._transit_alt = request.transit_alt_amsl_m or 30.0
+            self._search_alt = request.search_alt_amsl_m or 30.0
             self._orbit_radius = request.orbit_radius_m or self._orbit_radius
             self._low_battery_triggered = False
-            self._start_mission()
+            if not self._start_mission():
+                response.accepted = False
+                response.reason = ('No valid vehicle position yet — cannot place '
+                                   'the search area; retry once GPS is valid')
+                response.current_phase = self._guidance_phase()
+                return response
             response.accepted = True
 
         elif cmd == MissionCommand.Request.CMD_ABORT:
@@ -259,8 +262,9 @@ class MissionNode(Node):
 
     # ── Mission sequence helpers ──────────────────────────────────────────────
 
-    def _start_mission(self) -> None:
-        """ARM → OFFBOARD → TRANSIT."""
+    def _start_mission(self) -> bool:
+        """ARM → OFFBOARD → TRANSIT. Returns False when start is rejected so the
+        MissionCommand response reports the truth (not a blanket accepted)."""
         # Reject start without a valid position estimate: _latlondelta_to_enu would
         # silently return the ENU origin (0,0), making the vehicle arm and "transit"
         # to home instead of the requested search area.
@@ -268,10 +272,11 @@ class MissionNode(Node):
             self.get_logger().error(
                 'CMD_START rejected: no valid vehicle position yet — '
                 'cannot compute transit target (would default to ENU origin).')
-            return
+            return False
         self._set_phase(MissionPhase.STARTING)
         self._call_ap(AutopilotCommand.Request.CMD_ARM,
                       done_cb=self._on_arm_response)
+        return True
 
     def _on_arm_response(self, future) -> None:
         result = future.result()

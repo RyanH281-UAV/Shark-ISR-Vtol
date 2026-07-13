@@ -12,3 +12,8 @@ mission_node:
 
     # Seconds to wait for transit to complete before starting search anyway.
     transit_timeout_s: 300.0
+
+    # Seconds in TRACKING before the mission forces a resume of SEARCH.
+    # Guidance's own confidence gate usually returns earlier (target lost);
+    # this is the mission-level backstop.
+    track_timeout_s: 120.0

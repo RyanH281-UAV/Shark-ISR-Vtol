@@ -13,3 +13,9 @@ autopilot_bridge:
 
     # If no GuidanceSetpoint is received for this many seconds, hold current position.
     setpoint_timeout_s: 2.0
+
+    # ── SAFETY ────────────────────────────────────────────────────────────────
+    # Force-arm (PX4 param2=21196) bypasses ALL preflight checks. Needed in SITL
+    # (estimator warm-up); MUST be false for any hardware flight — the hardware
+    # launch config must not set this. Code default is false.
+    sitl_force_arm: true
