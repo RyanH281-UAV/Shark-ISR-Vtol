@@ -27,6 +27,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mock_camera_node = shark_isr_perception.mock_camera_node:main',
+            'camera_node = shark_isr_perception.camera_node:main',
             'detector_node = shark_isr_perception.detector_node:main',
         ],
     },

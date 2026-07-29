@@ -1,0 +1,37 @@
+# Shark-ISR companion stack — ROS 2 Humble on the Pi 5, containerised.
+#
+# The host is Pi OS 64-bit (owns the kernel, the Hailo PCIe driver, the camera).
+# This image is Ubuntu 22.04 + Humble — the exact distro the stack was frozen on
+# (BUILD_PLAN Phase 1) — so ros2_ws builds bit-identical to SITL. No distro port.
+#
+# What lives IN here: your ROS 2 nodes, HailoRT userspace, OpenCV (reads the host
+# camera stream). What stays on the HOST: the Hailo kernel driver and rpicam-vid.
+#
+# Build (on the Pi, arm64):
+#   docker build -f docker/Dockerfile.pi -t shark-isr:humble .
+FROM ros:humble
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# OpenCV + ffmpeg let camera_node read the host's rpicam-vid UDP stream.
+# NOTE: deliberately no libcamera/picamera2 here — camera capture is native on
+# the host, so the container never touches the Pi camera stack.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-opencv \
+        ffmpeg \
+        python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── HailoRT userspace ────────────────────────────────────────────────────────
+# CRITICAL: this wheel's version MUST match the hailo_pci driver on the HOST
+# (host: `dpkg -l | grep hailo` / `hailortcli fw-control identify`). A mismatch
+# fails at runtime, not build time. Download the matching aarch64 cp310 wheel
+# from the Hailo Developer Zone into docker/ before building.
+# ponytail: version pinned by build-arg, not hardcoded — the host driver sets it.
+ARG HAILORT_WHL=hailort-4.20.0-cp310-cp310-linux_aarch64.whl
+COPY ${HAILORT_WHL} /tmp/hailort.whl
+RUN pip3 install /tmp/hailort.whl && rm /tmp/hailort.whl
+
+# ros2_ws is bind-mounted at run time (edit on host, build in container), so no
+# COPY of the workspace here — keeps the image small and the edit loop instant.
+WORKDIR /ws

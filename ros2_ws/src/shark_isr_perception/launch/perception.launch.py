@@ -42,6 +42,8 @@ def generate_launch_description() -> LaunchDescription:
     mock_images_dir = LaunchConfiguration("mock_images_dir")
     log_level = LaunchConfiguration("log_level")
 
+    _conditions = __import__("launch.conditions", fromlist=["IfCondition", "UnlessCondition"])
+
     mock_camera = Node(
         package="shark_isr_perception",
         executable="mock_camera_node",
@@ -51,7 +53,18 @@ def generate_launch_description() -> LaunchDescription:
             {"mock_images_dir": mock_images_dir},
         ],
         arguments=["--ros-args", "--log-level", log_level],
-        condition=__import__("launch.conditions", fromlist=["IfCondition"]).IfCondition(use_sim),
+        condition=_conditions.IfCondition(use_sim),
+    )
+
+    # Real camera (hardware): reads the host rpicam-vid stream. Runs only when
+    # use_sim:=false, exactly opposite mock_camera above.
+    camera = Node(
+        package="shark_isr_perception",
+        executable="camera_node",
+        name="camera_node",
+        parameters=[default_config],
+        arguments=["--ros-args", "--log-level", log_level],
+        condition=_conditions.UnlessCondition(use_sim),
     )
 
     detector = Node(
@@ -72,6 +85,7 @@ def generate_launch_description() -> LaunchDescription:
             mock_images_dir_arg,
             log_level_arg,
             mock_camera,
+            camera,
             detector,
         ]
     )

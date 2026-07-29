@@ -7,6 +7,12 @@
 ### `mock_camera_node` (sim only)
 Publishes `sensor_msgs/Image` + `CameraInfo` from disk images or noise at configurable FPS. Used in sim so `detector_node` has a camera source without physical hardware.
 
+### `camera_node` (hardware only)
+Same contract as `mock_camera_node`, real frames. Capture stays **native on the Pi OS host**
+(`rpicam-vid` → localhost UDP); this node runs in the Humble container and reads that stream with
+OpenCV, converts BGR→`rgb8`, and republishes. No libcamera inside the container. See
+`docker/README.md`. Launched by `perception.launch.py` when `use_sim:=false`.
+
 ### `detector_node`
 Subscribes to `/camera/image_raw` and `/vehicle_state`.  
 In **sim mode** (`use_sim:=true`): publishes probabilistic mock `Detection` messages to exercise the full pipeline.  
@@ -19,7 +25,8 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 | Subscribes | `/camera/image_raw` | `sensor_msgs/Image` |
 | Subscribes | `/vehicle_state` | `shark_isr_interfaces/VehicleState` |
 | Publishes  | `/detection` | `shark_isr_interfaces/Detection` |
-| Publishes  | `/camera/camera_info` | `sensor_msgs/CameraInfo` (mock camera only) |
+| Publishes  | `/camera/image_raw` | `sensor_msgs/Image` (`mock_camera_node` sim / `camera_node` hardware) |
+| Publishes  | `/camera/camera_info` | `sensor_msgs/CameraInfo` (camera nodes only) |
 
 ## Parameters (`config/perception.yaml`)
 
@@ -32,8 +39,9 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 | `image_width` | int | `640` | Camera image width [px] |
 | `image_height` | int | `480` | Camera image height [px] |
 | `fx`, `fy`, `cx`, `cy` | float | `616, 616, 320, 240` | Camera intrinsics [px] |
-| `camera_fps` | float | `10.0` | Mock camera frame rate |
+| `camera_fps` | float | `10.0` | Camera frame rate (mock and real) |
 | `mock_images_dir` | str | `""` | Dir of test frames for mock camera (`""` = noise) |
+| `stream_url` | str | `udp://127.0.0.1:8554` | Real camera source for `camera_node` (host `rpicam-vid` stream) |
 
 ## Camera geometry (ADR-010)
 
@@ -70,6 +78,11 @@ ros2 topic echo /detection --once
 ## Run in isolation (real hardware — Pi 5)
 
 ```bash
+# 1. Host (Pi OS, native — NOT in the container): start the camera stream
+rpicam-vid -t 0 --codec mjpeg --width 640 --height 480 \
+    --framerate 10 --inline -o 'udp://127.0.0.1:8554'
+
+# 2. Container (--network host): camera_node reads that stream, detector runs Hailo
 ros2 launch shark_isr_perception perception.launch.py \
     use_sim:=false \
     hef_path:=/path/to/shark_detector.hef
@@ -79,7 +92,7 @@ ros2 launch shark_isr_perception perception.launch.py \
 
 ```bash
 # No ROS or simulator needed — pure math tests
-pytest test/test_geolocate.py -v
+pytest test/ -v
 ```
 
-9 tests cover: centre bbox → directly below, known pixel offset → correct ENU displacement, AGL linear scaling, invalid AGL raises, position_std positive, non-zero vehicle position.
+`test_camera_node.py` covers the BGR→`rgb8` channel swap. `test_geolocate.py` — 9 tests cover: centre bbox → directly below, known pixel offset → correct ENU displacement, AGL linear scaling, invalid AGL raises, position_std positive, non-zero vehicle position.

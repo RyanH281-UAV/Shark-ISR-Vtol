@@ -38,3 +38,9 @@
     # ── Mock camera (sim only) ────────────────────────────────────────────────
     camera_fps:      10.0
     mock_images_dir: ""   # path to dir of .png/.jpg test frames; "" = noise
+
+    # ── Real camera (hardware only, use_sim:=false) ──────────────────────────
+    # camera_node reads this OpenCV-openable source. Default = the localhost UDP
+    # stream from host-side rpicam-vid (see docker/README.md). Native camera
+    # capture stays on the host; the container only reads the stream.
+    stream_url: "udp://127.0.0.1:8554"
