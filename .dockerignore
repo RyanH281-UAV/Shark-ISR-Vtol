@@ -1,0 +1,28 @@
+# Docker build context = repo root, and the repo is ~12 GB (datasets, training
+# runs, site render assets). Without this the Pi tars all of it to the daemon on
+# every build. The image needs almost nothing from the repo: ros2_ws is
+# bind-mounted at run time (see docker/run_pi.sh), so only the HailoRT wheel in
+# docker/ actually has to be in context.
+
+.git/
+.swarm/
+
+# Build/runtime artifacts
+build/
+install/
+log/
+runs/
+**/__pycache__/
+*.pyc
+
+# Model training — 8.8 GB of datasets and weights
+training/
+
+# Websites — nothing to do with the companion stack (2.4 GB of renders)
+site-v2/
+site-v3/
+legacy/
+
+# Sim + docs
+sim/results/
+docs/

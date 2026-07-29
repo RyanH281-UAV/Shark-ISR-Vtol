@@ -27,8 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (host: `dpkg -l | grep hailo` / `hailortcli fw-control identify`). A mismatch
 # fails at runtime, not build time. Download the matching aarch64 cp310 wheel
 # from the Hailo Developer Zone into docker/ before building.
+# Path is relative to the BUILD CONTEXT (the repo root), so it keeps the docker/ prefix.
 # ponytail: version pinned by build-arg, not hardcoded — the host driver sets it.
-ARG HAILORT_WHL=hailort-4.20.0-cp310-cp310-linux_aarch64.whl
+ARG HAILORT_WHL=docker/hailort-4.20.0-cp310-cp310-linux_aarch64.whl
 COPY ${HAILORT_WHL} /tmp/hailort.whl
 RUN pip3 install /tmp/hailort.whl && rm /tmp/hailort.whl
 

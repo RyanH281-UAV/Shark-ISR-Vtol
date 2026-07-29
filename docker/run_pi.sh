@@ -16,9 +16,18 @@ IMAGE="${IMAGE:-shark-isr:humble}"
 WS="${WS:-$HOME/shark-isr-vtol/ros2_ws}"          # host path to ros2_ws
 PIXHAWK_DEV="${PIXHAWK_DEV:-/dev/ttyAMA0}"        # UART; /dev/ttyACM0 if USB
 
-devices=(--device /dev/hailo0)
-[[ -e "$PIXHAWK_DEV" ]] && devices+=(--device "$PIXHAWK_DEV") \
-    || echo "warn: $PIXHAWK_DEV not present — skipping (set PIXHAWK_DEV)." >&2
+devices=()
+if [[ -e /dev/hailo0 ]]; then
+    devices+=(--device /dev/hailo0)
+else
+    echo "warn: /dev/hailo0 not present — is hailo-all installed on the host? " \
+         "Container starts without it; detector_node will fail in real mode." >&2
+fi
+if [[ -e "$PIXHAWK_DEV" ]]; then
+    devices+=(--device "$PIXHAWK_DEV")
+else
+    echo "warn: $PIXHAWK_DEV not present — skipping (set PIXHAWK_DEV)." >&2
+fi
 
 exec docker run -it --rm \
     --network host \

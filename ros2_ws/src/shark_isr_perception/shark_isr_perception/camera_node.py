@@ -17,10 +17,15 @@ Host side (Pi OS, native — see docker/README.md):
 
 Then this node (in the Humble container, --network host) reads udp://127.0.0.1:8554.
 
+Timestamp caveat: no capture time crosses the UDP boundary, so frames are stamped
+when this node READS them, not when the sensor exposed them. That bias lands in
+geolocation (detector_node pairs each frame with the latest vehicle_state). Buffer
+depth is pinned to 1 to stop it accumulating — measure the residual at B08.
+
 Params (config/perception.yaml)
 -------------------------------
   stream_url    str    — OpenCV-openable source (default udp://127.0.0.1:8554).
-                         A /dev/videoN index also works if you ever pass a UVC cam.
+                         A device path like /dev/video0 also works for a UVC cam.
   camera_fps    float  — publish rate; the poll rate on the stream.
   image_width   int    — output width  (frame resized to this).
   image_height  int    — output height.
@@ -28,6 +33,8 @@ Params (config/perception.yaml)
 """
 
 from __future__ import annotations
+
+import time
 
 import numpy as np
 import rclpy
@@ -73,20 +80,72 @@ class CameraNode(Node):
         import cv2  # type: ignore
 
         self._cv2 = cv2
-        self._cap = cv2.VideoCapture(self._url)
-        if not self._cap.isOpened():
-            self.get_logger().error(
-                f"Could not open camera stream {self._url!r}. Is rpicam-vid running "
-                f"on the host? (see docker/README.md)"
-            )
-        else:
-            self.get_logger().info(f"CameraNode: streaming from {self._url!r}")
+        self._cap = None
+        self._size_warned = False
+        self._last_open_attempt = 0.0
+        self._open_stream()
 
         # Poll the stream on a timer — the stream self-paces, so a read() that
         # blocks briefly is fine on the bench. ponytail: single-threaded poll;
         # move to a capture thread only if read latency shows up in B08.
         period = 1.0 / fps
         self.create_timer(period, self._publish_frame)
+
+    # Seconds between reconnect attempts. Each failed attempt costs OPEN_TIMEOUT_MS
+    # of blocked executor, so retrying every timer tick (10 Hz) would wedge the node.
+    _RETRY_PERIOD_S = 3.0
+    _OPEN_TIMEOUT_MS = 2000
+    _READ_TIMEOUT_MS = 2000
+
+    def _open_stream(self) -> bool:
+        """(Re)open the stream. Returns True if it is now readable.
+
+        Called at startup AND from the timer, because the host rpicam-vid and this
+        container start in separate terminals — the stream is very often not up yet
+        when the node launches, and it can drop mid-flight. Without the retry the
+        node would sit alive and permanently silent after one startup error.
+
+        Rate-limited: opening a dead URL blocks for the full timeout, and with no
+        timeouts at all FFMPEG blocks for ~30 s, which hangs the node before it
+        ever spins (it can't even be Ctrl-C'd cleanly).
+        """
+        now = time.monotonic()
+        if now - self._last_open_attempt < self._RETRY_PERIOD_S:
+            return False
+        self._last_open_attempt = now
+
+        if self._cap is not None:
+            self._cap.release()
+
+        if "://" in self._url:
+            # Network stream: force FFMPEG so the timeout params are honoured.
+            self._cap = self._cv2.VideoCapture(
+                self._url,
+                self._cv2.CAP_FFMPEG,
+                [
+                    self._cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, self._OPEN_TIMEOUT_MS,
+                    self._cv2.CAP_PROP_READ_TIMEOUT_MSEC, self._READ_TIMEOUT_MS,
+                ],
+            )
+        else:
+            # Local device path (/dev/videoN) — V4L2, opens immediately.
+            self._cap = self._cv2.VideoCapture(self._url)
+
+        if not self._cap.isOpened():
+            self.get_logger().error(
+                f"Could not open camera stream {self._url!r} — retrying. Is rpicam-vid "
+                f"running on the host? (see docker/README.md)",
+                throttle_duration_sec=5.0,
+            )
+            return False
+
+        # Keep one frame in flight. The FFMPEG/UDP backend otherwise queues frames,
+        # and that backlog never drains: detector_node geolocates each frame against
+        # the LATEST vehicle_state, so read lag converts straight into position error
+        # (~10 m per second of lag at cruise, against a 39 m footprint).
+        self._cap.set(self._cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.get_logger().info(f"CameraNode: streaming from {self._url!r}")
+        return True
 
     def _build_camera_info(self) -> CameraInfo:
         fx = self.get_parameter("fx").value
@@ -105,14 +164,31 @@ class CameraNode(Node):
         return info
 
     def _publish_frame(self) -> None:
-        if not self._cap.isOpened():
+        if not self._cap.isOpened() and not self._open_stream():
             return
+
         ok, frame = self._cap.read()
         if not ok or frame is None:
-            self.get_logger().warn("Empty frame from stream — skipping.", throttle_duration_sec=5.0)
+            # Publisher went away or the stream stalled — reopen rather than spin
+            # silently on a dead handle.
+            self.get_logger().warn(
+                "Empty frame from stream — reopening.", throttle_duration_sec=5.0
+            )
+            self._open_stream()
             return
 
         if frame.shape[1] != self._w or frame.shape[0] != self._h:
+            # This resize STRETCHES — it does not preserve aspect. The intrinsics
+            # (fx/fy/cx/cy) describe the configured size, so a stream at a different
+            # aspect ratio silently skews every bbox and geolocation ray. Fix the
+            # rpicam-vid --width/--height to match instead of relying on this.
+            if not self._size_warned:
+                self.get_logger().warn(
+                    f"Stream is {frame.shape[1]}x{frame.shape[0]}, config expects "
+                    f"{self._w}x{self._h} — stretching. Intrinsics assume the configured "
+                    f"size; match rpicam-vid to it or geolocation will be wrong."
+                )
+                self._size_warned = True
             frame = self._cv2.resize(frame, (self._w, self._h))
 
         stamp = self.get_clock().now().to_msg()

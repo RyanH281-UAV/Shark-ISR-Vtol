@@ -33,9 +33,14 @@ from the Hailo Developer Zone into this folder, then:
 ```bash
 cd ~/shark-isr-vtol
 docker build -f docker/Dockerfile.pi \
-  --build-arg HAILORT_WHL=<the-wheel>.whl \
+  --build-arg HAILORT_WHL=docker/<the-wheel>.whl \
   -t shark-isr:humble .
 ```
+
+The `docker/` prefix is required: the build context is the repo root, and `COPY`
+resolves against the context, not against the Dockerfile's directory. `.dockerignore`
+keeps the 12 GB of datasets and site renders out of that context — without it the
+Pi ships the whole repo to the daemon on every build.
 
 ## Run
 
@@ -77,9 +82,18 @@ ros2 topic echo /detection                           # detections publishing
 
 - **HailoRT version drift** — rebuild the image whenever you `apt upgrade`
   `hailo-all` on the host; keep the wheel in lockstep.
-- **Camera latency** — MJPEG-over-UDP adds a little; measure at B08. If it
-  matters, move to `picamera2` inside the container (pass `/dev/media*`,
-  `/dev/video*`, `/run/udev`) — more fragile, lower latency.
+- **Camera latency — measure this at B08, it is not cosmetic.** No capture
+  timestamp crosses the UDP boundary, so `camera_node` stamps frames when it
+  *reads* them, and `detector_node` geolocates each frame against the *latest*
+  `vehicle_state`. Lag therefore converts directly into position error: ~10 m per
+  second of lag at cruise, against a 39 m footprint. `camera_node` pins
+  `CAP_PROP_BUFFERSIZE=1` so backlog can't accumulate, but the fixed
+  encode/transport delay is still unmeasured. If it turns out to matter, move to
+  `picamera2` inside the container (pass `/dev/media*`, `/dev/video*`,
+  `/run/udev`) — more fragile, lower latency.
+- **Stream size must match `perception.yaml`.** `rpicam-vid --width/--height` has
+  to equal `image_width`/`image_height`. `camera_node` warns and stretches
+  otherwise, and a stretch invalidates the `fx/fy/cx/cy` intrinsics.
 - **Compose** — a `docker-compose.yml` only earns its place once you're running
   agent + stack as separate long-lived services. One `docker run` is enough for
   bench bring-up.
