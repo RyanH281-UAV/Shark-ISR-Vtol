@@ -6,6 +6,11 @@
 
 ## 1. Airframe identity
 
+![Hornet airframe during assembly — wing/fuselage section and V-tail, EPP foam, unpainted](img/airframe-hornet.jpg)
+*The actual airframe mid-build (2026-08): centre section with the wing panels and nose fitted,
+V-tail below, tilt-motor mounts not yet installed. This is the platform the autonomy stack
+targets — it has not flown.*
+
 The Hornet is a **1.1 m wingspan tri-tiltrotor VTOL**. Two front motors tilt; the rear motor is
 stationary. This is the physical platform the shark-monitoring ISR system flies on. The autonomy
 stack does **not** own the tilt-transition control law — that lives in the autopilot firmware (see

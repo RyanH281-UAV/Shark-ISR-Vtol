@@ -135,6 +135,13 @@ On-device bring-up (Hailo hardware in the loop) is bench gate B08; throughput un
 (uXRCE-DDS). Mass and power budget against the 2.5 kg MTOW ceiling is an open task (B01) — the
 boards have not been weighed.*
 
+![Raspberry Pi 5 with AI HAT+ and Camera Module 3 assembled and running on the bench](docs/img/companion-assembled.jpg)
+*The companion assembled and bench-verified (B07a, 2026-08-10): AI HAT+ seated on the Pi 5 over
+PCIe, Camera Module 3 on the CSI ribbon. `hailortcli fw-control identify` reports Hailo-8 /
+HAILO8L firmware 4.20.0; `rpicam-hello --list-cameras` reports imx708. Booting from the USB stick
+rather than a microSD — the original cards turned out to be counterfeit (see
+`docs/HARDWARE_BRINGUP.md` B07).*
+
 | Board | Role |
 |---|---|
 | Raspberry Pi 5 | Companion computer — runs ROS 2, hosts all autonomy nodes |
