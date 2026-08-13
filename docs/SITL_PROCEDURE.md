@@ -5,7 +5,10 @@
 > package checklist item maps to a numbered test here. Nothing flies until every
 > test in §6 passes (ADR-005).
 >
-> Status: build + node bring-up verified 2026-06-11. Tests T1–T10 not yet run.
+> Status: build + node bring-up verified 2026-06-11. T01–T11 have been run and passed, but
+> **no run output was ever committed** — `docs/sitl_runs/` (§ below) does not exist yet, so the
+> figures quoted in `README.md` are transcribed claims rather than evidence. T10/T11 additionally
+> need re-running against the ADR-016 confidence gate and ADR-012 patrol strategy.
 
 ---
 

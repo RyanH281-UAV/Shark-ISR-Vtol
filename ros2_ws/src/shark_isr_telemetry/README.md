@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `/vehicle_state` | `shark_isr_interfaces/VehicleState` | `shark_isr_autopilot` | Position, velocity, battery, VTOL phase |
 | `/search_state` | `shark_isr_interfaces/SearchState` | `shark_isr_guidance` | Mission phase, coverage, orbit state |
-| `/detections` | `shark_isr_interfaces/Detection` | `shark_isr_perception` | Shark detections with geo position |
+| `/detection` | `shark_isr_interfaces/Detection` | `shark_isr_perception` | Shark detections with geo position |
 
 ## Published Topics
 

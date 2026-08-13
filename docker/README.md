@@ -2,8 +2,9 @@
 
 Runs the frozen ROS 2 **Humble** stack on the Pi without putting Ubuntu on the
 Pi. Host = **Pi OS 64-bit** (hardware just works: Hailo, camera, serial); the
-container = Ubuntu 22.04 + Humble (matches SITL bit-for-bit). Closes
-`HARDWARE_BRINGUP.md` **B07**.
+container = Ubuntu 22.04 + Humble (matches SITL bit-for-bit). Implements the
+`HARDWARE_BRINGUP.md` **B07** container path — B07a host gates pass, B07b is at
+3 of 4 (the camera stream gate is still open).
 
 ## Why containerise
 
@@ -20,7 +21,7 @@ sudo apt install -y hailo-all docker.io          # Hailo driver+tools, Docker
 sudo usermod -aG docker "$USER"                  # re-login after this
 sudo reboot
 # verify hardware on the HOST:
-hailortcli fw-control identify                   # must report Hailo-8L
+hailortcli fw-control identify                   # Board Name: Hailo-8 / Arch: HAILO8L
 rpicam-hello -t 2000                             # camera preview works
 dpkg -l | grep hailort                           # note version -> Dockerfile arg
 ```
@@ -57,8 +58,10 @@ Then the container:
 docker/run_pi.sh                 # shell inside the container
 # first time, inside:
 cd /ws && colcon build && source install/setup.bash
-# B07 hardware checks:
-hailortcli fw-control identify                       # Hailo seen from container
+# B07b hardware checks:
+# NOTE: the pip wheel ships bindings only — there is no hailortcli binary inside
+# the container. Check the device through the Python API instead.
+python3 -c "from hailo_platform import VDevice; VDevice(); print('hailo ok')"
 ros2 launch shark_isr_perception perception.launch.py use_sim:=false \
   hef_path:=/ws/models/shark_detector.hef            # B08
 ros2 topic hz /camera/image_raw                      # frames flowing from host stream
@@ -69,13 +72,16 @@ ros2 topic echo /detection                           # detections publishing
 `/camera/image_raw` — the same topic `mock_camera_node` uses in sim, so
 `detector_node` and everything downstream are untouched.
 
-## The four wires (`run_pi.sh`)
+## What crosses the boundary (`run_pi.sh`)
 
 | Wire | How | Why |
 |---|---|---|
 | DDS network | `--network host` | node discovery; topics flow as in SITL |
+| DDS shared memory | `--ipc host` | `--network host` does *not* share `/dev/shm`; without this a second container's Fast-DDS writes into its own SHM segment and data silently never arrives while discovery still looks healthy. Not load-bearing in the current single-container setup — set so the two-container split fails loudly instead |
 | Hailo-8L | `--device /dev/hailo0` | PCIe inference device |
+| HailoRT userspace | bind-mount host `libhailort.so*` | the pip wheel is bindings-only; its `DT_NEEDED` names `libhailort.so.4.20.0` exactly, so host and wheel must match |
 | Pixhawk | `--device /dev/ttyAMA0` | uXRCE-DDS agent ↔ PX4 (set `PIXHAWK_DEV`) |
+| Workspace | `-v $WS:/ws` + `--user $(id -u)` | edit on host, build in container. The `--user` matters: as root, `colcon` leaves root-owned `build/ install/ log/` in your host tree |
 | Camera | localhost UDP, **not** a device | avoids libcamera-in-Docker; native on host |
 
 ## Later / tighter (not now)
@@ -86,9 +92,12 @@ ros2 topic echo /detection                           # detections publishing
   timestamp crosses the UDP boundary, so `camera_node` stamps frames when it
   *reads* them, and `detector_node` geolocates each frame against the *latest*
   `vehicle_state`. Lag therefore converts directly into position error: ~10 m per
-  second of lag at cruise, against a 39 m footprint. `camera_node` pins
-  `CAP_PROP_BUFFERSIZE=1` so backlog can't accumulate, but the fixed
-  encode/transport delay is still unmeasured. If it turns out to matter, move to
+  second of lag at cruise, against a 39 m diagonal footprint. **Nothing currently
+  bounds the queue depth** — `camera_node` requests `CAP_PROP_BUFFERSIZE=1`, but
+  that property is unsupported on the FFMPEG backend (`set()` returns `False` on
+  the OpenCV 4.5.4 / libavformat 58.45 this image ships), so it is a no-op on the
+  `udp://` path. Total lag is unmeasured. If it turns out to matter, drain per tick
+  (read N, publish the last), move capture to a thread, or as a last resort move to
   `picamera2` inside the container (pass `/dev/media*`, `/dev/video*`,
   `/run/udev`) — more fragile, lower latency.
 - **Stream size must match `perception.yaml`.** `rpicam-vid --width/--height` has

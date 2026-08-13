@@ -3,25 +3,31 @@
 # every build. The image needs almost nothing from the repo: ros2_ws is
 # bind-mounted at run time (see docker/run_pi.sh), so only the HailoRT wheel in
 # docker/ actually has to be in context.
+#
+# NOTE: .dockerignore matches whole paths with filepath.Match — a bare `build/`
+# excludes ONLY a top-level build/. Nested paths need `**/`. Getting this wrong
+# is silent: the build still works, it just ships 195 MB it didn't need to.
 
 .git/
 .swarm/
 
-# Build/runtime artifacts
-build/
-install/
-log/
-runs/
+# Build/runtime artifacts — `**/` so ros2_ws/build, ros2_ws/install, ros2_ws/log
+# are actually caught (they are 154 MB / 31 MB / 9.8 MB respectively).
+**/build/
+**/install/
+**/log/
+**/runs/
 **/__pycache__/
 *.pyc
+
+# ros2_ws is bind-mounted at run time, so the image never needs it in context.
+ros2_ws/
 
 # Model training — 8.8 GB of datasets and weights
 training/
 
-# Websites — nothing to do with the companion stack (2.4 GB of renders)
-site-v2/
+# Website — nothing to do with the companion stack
 site-v3/
-legacy/
 
 # Sim + docs
 sim/results/

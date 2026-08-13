@@ -10,7 +10,14 @@
 > `HORNET_PLATFORM.md`. Locked hardware decisions: ADR-001 (PX4), ADR-002
 > (uXRCE-DDS), ADR-006 (Pi 5 + AI HAT+ + Camera Module 3), ADR-015 (QGC GCS).
 >
-> Status: not started. Blocked on nothing — H0 can begin today.
+> Status: **B07a host gates passed** (2026-08-10), **B07b container gates 3 of 4**
+> (2026-08-13). AI HAT+ and Camera Module 3 physically attached; `hailortcli fw-control
+> identify` and `rpicam-hello --list-cameras` both pass on genuine, verified boot media.
+> The container builds, `colcon build`s clean inside, and reaches the Hailo device.
+> **Open:** the `rpicam-vid` → UDP → `camera_node` path has not yet produced frames on
+> `/camera/image_raw`. Root cause of the 2026-08-04 corruption incident confirmed:
+> counterfeit/fake-capacity SD cards (H2testw showed real capacity ~3.9 GB on a card
+> reporting 64 GB). H0/H1 not started; they do not gate B07.
 
 ---
 
@@ -112,11 +119,68 @@ resets the autopilot (never acceptable — it must have its own supply path).
 
 Closes `BUILD_PLAN.md` Phase 5's open bench item and ADR-006's thermal flag.
 
-- [ ] **B07 — Bring-up.** Pi OS (64-bit) install, ROS 2 + workspace build on
-      the Pi, AI HAT+ detected over PCIe Gen 3 (`hailortcli fw-control identify`),
-      Camera Module 3 streaming via libcamera/picamera2.
-      *Pass:* `colcon build` clean on the Pi; `hailortcli` reports the Hailo-8L;
-      camera preview at target resolution/framerate.
+- [x] **B07a — Host gates.** Per **ADR-017**: host = Pi OS Bookworm 64-bit (owns the
+      hardware), frozen ROS 2 Humble stack in Docker on top (`docker/`). AI HAT+
+      detected over PCIe (`hailortcli fw-control identify`), Camera Module 3 verified
+      native (`rpicam-hello`).
+      *Pass (2026-08-10):* `hailortcli fw-control identify` → Hailo-8 (HAILO8L arch),
+      firmware 4.20.0, control protocol v2. `rpicam-hello --list-cameras` → imx708
+      (Camera Module 3), 4608x2592 max. `rpicam-hello -t 10s` ran clean, no errors.
+- [~] **B07b — Container gates.** 3 of 4 passed (2026-08-13).
+      - [x] `docker build` succeeds on the Pi
+      - [x] `colcon build` clean inside the container against the bind-mounted `ros2_ws`
+      - [x] HailoRT reaches the device from inside the container — this is what the
+            host-`libhailort.so*` bind-mount and `--device /dev/hailo0` are for. Note the pip
+            wheel ships **bindings only** and no `hailortcli` binary, so verify with
+            `python3 -c "from hailo_platform import VDevice; VDevice()"` rather than the
+            `hailortcli` invocation the earlier draft of `docker/README.md` specified.
+      - [ ] `ros2 topic hz /camera/image_raw` shows frames at `camera_fps` — **still open.**
+            The `rpicam-vid` → UDP → `camera_node` path is the remaining gate. Two fixes landed
+            against it during this attempt (forced MJPEG demuxer, `--ipc host`); neither is
+            confirmed sufficient until this gate actually passes.
+
+      **Storage-corruption incident (2026-08-04) — root cause confirmed, resolved
+      2026-08-10.** What looked like three unrelated faults across the original
+      session — a corrupted `hailo_pci.ko`, a `BADSIG` on `apt update`, then
+      `iptables` showing `ii` in `dpkg -l` while the binary was simply absent — was
+      one fault: dpkg's package database wiped to a single tracked file (healthy
+      systems track tens of thousands). Root cause, established over several
+      subsequent boot-media attempts: **counterfeit/fake-capacity SD cards**, both
+      sourced cheaply from AliExpress (a SanDisk Ultra 256 GB and a Sony 64 GB).
+      H2testw confirmed it directly on the Sony card — real capacity **~3.9 GB**
+      against a reported 64 GB; writes past that point silently wrap and overwrite
+      earlier data with no I/O error, which explains both the original dpkg
+      wipeout and later, unrelated-looking `EXT4-fs error: bad block bitmap
+      checksum` faults at different block groups across repeated re-flashes
+      (bg 495, bg 126/243/368/495 again, bg 32 — random locations, consistent with
+      wraparound corruption rather than one bad physical sector). A `TOSHIBA USB
+      DRV` 16 GB stick used as an interim workaround showed the same corruption
+      signature and is also suspect/retired.
+
+      **Resolution:** re-flashed onto a verified-genuine SanDisk USB 3.0 stick
+      (H2testw passed clean, real capacity confirmed; ~8 MB/s write — slow but
+      trustworthy) as an interim bridge. `dpkg` canary
+      (`find /var/lib/dpkg/info -name "*.list" | wc -l`) held stable through
+      `apt full-upgrade`, `hailo-all`/`docker.io`/`iptables` install, and a
+      `stress --cpu 4` load test with `vcgencmd get_throttled` reading `0x0`
+      throughout — no brownout, no corruption recurrence. **Long-term fix ordered
+      separately: a genuine V30/U3/A2 64 GB microSD from a proper retailer**
+      (not AliExpress) — swap in once it arrives; the USB stick is a bridge, not
+      the permanent boot media, given its write speed.
+      - [x] Bookworm flashed and booted; SSH confirmed (genuine media)
+      - [x] `hailo-all` + `docker.io` + `iptables` installed at host level;
+            dpkg canary stable across full-upgrade and installs
+      - [x] `hailo_pci` dkms module — required a manual rebuild after
+            `apt full-upgrade` landed a newer kernel (`6.12.96+rpt-rpi-2712`) than
+            the dkms build targeted (`6.12.93+rpt-rpi-2712` / `...-v8`); fixed with
+            `sudo dkms install hailo_pci/4.20.0 -k $(uname -r)`. Worth checking
+            after any future kernel-bumping `apt upgrade` — `dkms status` vs
+            `uname -r` should match, or `hailortcli` will fail with
+            `HAILO_DRIVER_NOT_INSTALLED` even though `lspci` shows the device.
+      - [x] AI HAT+ physically attached; PCIe Hailo-8 device visible in `lspci`
+      - [x] Camera Module 3 physically attached; imx708 detected
+      - [x] Container built and run; 3 of 4 B07b gates pass (see above). Remaining:
+            the camera stream reaching `/camera/image_raw`.
 - [ ] **B08 — Detector on real hardware.** `.hef` model loaded (Model Zoo YOLO
       variant per ADR-006, `hef_path` set in `config/perception.yaml`);
       `detector_node` running in real (non-mock) mode against live camera.

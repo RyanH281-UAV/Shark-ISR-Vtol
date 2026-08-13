@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Path is relative to the BUILD CONTEXT (the repo root), so it keeps the docker/ prefix.
 # ponytail: version pinned by build-arg, not hardcoded — the host driver sets it.
 ARG HAILORT_WHL=docker/hailort-4.20.0-cp310-cp310-linux_aarch64.whl
-COPY ${HAILORT_WHL} /tmp/hailort.whl
-RUN pip3 install /tmp/hailort.whl && rm /tmp/hailort.whl
+COPY ${HAILORT_WHL} /tmp/
+RUN pip3 install /tmp/*.whl && rm /tmp/*.whl
 
 # ros2_ws is bind-mounted at run time (edit on host, build in container), so no
 # COPY of the workspace here — keeps the image small and the edit loop instant.

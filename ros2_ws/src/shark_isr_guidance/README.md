@@ -6,7 +6,7 @@ Produces `GuidanceSetpoint` — consumed by `shark_isr_autopilot`.
 ## Responsibilities
 
 - **Search strategy (ADR-012):** config choice via `search_strategy` —
-  `persistent_patrol` (default: threat-weighted belief-driven patrol with a hard revisit
+  `persistent_patrol` (default: belief-driven patrol with a hard revisit
   bound), `bayesian_greedy` (first-find), or `lawnmower` (fixed boustrophedon baseline,
   T10-verified).
 - **Bayesian map:** discrete probability grid; null observations (sweep, no detection),

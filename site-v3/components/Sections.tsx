@@ -31,7 +31,7 @@ const PHASES = [
     state: "text-track-ink",
     bar: "bg-track",
     title: "Confidence-gated, onboard",
-    body: "YOLOv8n compiled to a Hailo .hef runs on the aircraft's 13-TOPS NPU. Detections accumulate confidence across frames and decay on misses; one lucky frame never flies the aircraft. Each hit is geolocated by pinhole ray-casting to the water surface.",
+    body: "YOLOv8n compiled to a Hailo .hef, targeting the aircraft's 13-TOPS NPU (deployment is the next bench gate). Detections accumulate confidence across frames and decay on misses; one lucky frame never flies the aircraft. Each hit is geolocated by pinhole ray-casting to the water surface.",
   },
   {
     icon: Orbit,
@@ -96,7 +96,7 @@ const METRICS = [
   { value: 0.945, decimals: 3, suffix: "", label: "mAP50", note: "223 held-out images" },
   { value: 0.742, decimals: 3, suffix: "", label: "mAP50-95", note: "held-out test set" },
   { value: 95, decimals: 0, suffix: "%", label: "Recall", note: "the mission metric" },
-  { value: 89, decimals: 0, suffix: "%", label: "Precision", note: "51 open-water hard negatives" },
+  { value: 89, decimals: 0, suffix: "%", label: "Precision", note: "test set incl. 51 negatives" },
 ];
 
 export function Detector() {
@@ -175,7 +175,7 @@ const HW = [
   {
     icon: Cpu,
     name: "Raspberry Pi 5 + AI HAT+",
-    spec: "Hailo-8L NPU, 13 TOPS INT8 over PCIe Gen 3 — full detector inference onboard",
+    spec: "Hailo-8L NPU, 13 TOPS INT8 over PCIe Gen 3 — sized for full detector inference onboard",
   },
   {
     icon: Camera,
@@ -304,7 +304,7 @@ const TESTS = [
   ["T08", "Abort → RTL", "CMD_ABORT drives PX4 into return-to-launch"],
   ["T09", "Low-battery failsafe", "Threshold crossing triggers autonomous return"],
   ["T10", "End-to-end rehearsal", "START → ARM → SEARCH → detection → TRACK → RETURN"],
-  ["T11", "Perception pipeline", "Camera → detector → guidance TRACK, no test injection"],
+  ["T11", "Perception pipeline", "Mock camera → detector → guidance TRACK, no test-side injection"],
 ];
 
 export function Proof() {
@@ -320,7 +320,10 @@ export function Proof() {
           </h2>
         </Reveal>
         <Reveal delay={0.1}>
-          <p className="font-mono text-sm text-search-ink">6 / 6 PASS</p>
+          <p className="font-mono text-sm text-search-ink">
+            6 / 6 PASS
+            <span className="ml-2 text-muted">· T10/T11 re-run pending</span>
+          </p>
         </Reveal>
       </div>
       <Stagger className="overflow-hidden rounded border border-line">

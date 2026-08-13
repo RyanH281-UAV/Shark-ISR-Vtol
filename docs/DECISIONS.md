@@ -202,7 +202,9 @@ Format per entry: context, decision, rationale, status.
   safety-critical), ENU-origin errors in detection/search-centre placement,
   ENU yaw convention in guidance setpoints, Point() keyword-construction crash,
   hold-position drift latch, and a mission-level TRACKING timeout (120 s default).
-- **Status:** Locked (2026-06-11). SITL verification of all fixes pending (Phase 2 gate).
+- **Status:** Locked (2026-06-11). The orbit-geometry and failsafe fixes are exercised by T06–T09;
+  those runs' console output was never committed, so the verification is asserted rather than
+  evidenced (see the provenance note in `README.md` § SITL verification).
 
 ---
 
@@ -260,7 +262,12 @@ Format per entry: context, decision, rationale, status.
   required before trusting eval numbers.
 - **Rationale:** Honest eval is a safety-relevant claim. A detector with inflated mAP may miss
   real targets; the leakage must be closed before the model drives any safety-relevant detection.
-- **Status:** Locked (2026-06-18, fix committed). Re-validation results pending.
+- **Status:** Locked (2026-06-18, fix committed). Re-validation **done** — the retrained model
+  scores mAP50 **0.945** on the held-out test split, evidenced by
+  `training/runs/detect/val-2/BoxPR_curve.png`. The remaining figures quoted in `README.md`
+  (mAP50-95, recall, precision) come from the same run but its console output was not saved;
+  re-run `yolo val …sharks_eval.yaml` and commit the output to close that gap. Supersedes the
+  "results pending" wording and reconciles the conflict with ADR-013.
 
 ---
 
@@ -290,7 +297,7 @@ Format per entry: context, decision, rationale, status.
 - **Context:** `guidance_node` transitioned to TRACK on any single detection ≥ 0.70 — one lucky
   frame could fly the aircraft to a whitecap. The public materials (README, site) had long
   described an accumulate/decay rule, but it existed only in the site's demo model
-  (`site-v2/lib/guidance.ts`), not in the stack.
+  (the site's browser demo model, now `site-v3/lib/guidance.ts`), not in the stack.
 - **Decision:** A `ConfidenceGate` (pure math, `shark_isr_guidance/confidence_gate.py`) gates the
   transition: each detection adds `gain × confidence`; every guidance tick subtracts `decay`;
   SEARCH → TRACK fires only after the score holds ≥ `tau` for `k_sustain` consecutive ticks.
@@ -304,6 +311,93 @@ Format per entry: context, decision, rationale, status.
   transition; a 30-frame stream must. (c) Unit-tested (`test_confidence_gate.py`); SITL re-run of
   T10/T11 pending.
 - **Status:** Locked (2026-07-13).
+
+---
+
+### ADR-017 — Companion OS: Pi OS Bookworm host + Humble in Docker (supersedes "flash Ubuntu on the Pi")
+
+- **Context:** ADR-006 fixes the companion computer as Pi 5 + AI HAT+ + Camera Module 3. The
+  unwritten assumption behind it — and behind `HARDWARE_BRINGUP.md` B07's "Pi OS (64-bit) install,
+  ROS 2 + workspace build on the Pi" — was that the Pi would run a single OS that had both the ROS 2
+  Humble stack and working Pi 5 hardware support. No such OS exists:
+  - The stack is frozen on **ROS 2 Humble / Ubuntu 22.04** (Phase 1 freeze; ADR-004/005). Humble
+    has no Bookworm binaries.
+  - Ubuntu does not support Pi 5 hardware before **24.04**, and **libcamera does not work on
+    Ubuntu before 25.04** — so "flash Ubuntu on the Pi" costs either the camera or the frozen
+    distro.
+  - Building Humble from source on Bookworm, or porting the stack to Jazzy/Ubuntu 24.04, both
+    break the SITL-parity guarantee ADR-005 depends on.
+- **Decision:** Split the companion computer along the hardware/runtime boundary.
+  - **Host = Raspberry Pi OS Bookworm (64-bit).** Owns all hardware: kernel, `hailo_pci` +
+    HailoRT (`hailo-all`), the camera stack (libcamera/`rpicam-*`), and the Pixhawk serial port.
+  - **Container = `ros:humble` (Ubuntu 22.04) via Docker**, running the frozen stack unchanged —
+    `ros2_ws` bind-mounted, `colcon build` inside. Bit-identical to SITL.
+  - **Four wires** cross the boundary and nothing else (`docker/run_pi.sh`):
+    `--network host` (DDS discovery), `--device /dev/hailo0` (PCIe inference),
+    `--device $PIXHAWK_DEV` (uXRCE-DDS ↔ PX4), and **camera as a localhost UDP stream, not a
+    device** — the host runs `rpicam-vid` natively and `camera_node` in the container reads it,
+    republishing `/camera/image_raw`, the same topic contract as `mock_camera_node`.
+- **Rationale:**
+  1. **SITL parity is preserved exactly (ADR-005).** The container is the same Ubuntu 22.04 +
+     Humble the campaign T06–T11 was verified on. No distro port, no re-verification of the stack.
+  2. **Pi 5 hardware support is preserved.** Bookworm is the reference OS for the Pi 5, the AI
+     HAT+, and Camera Module 3 — the hardware is first-class instead of a fight.
+  3. **The libcamera constraint is designed around, not worked around.** libcamera-in-Docker is
+     the known Pi-camera pain point, so the container never touches the camera stack at all;
+     capture is native and only pixels cross the boundary. Container needs OpenCV + ffmpeg only.
+  4. Keeps the companion out of the safety-critical loop unchanged — a container crash is exactly
+     as survivable as a node crash was.
+- **Cross-references:**
+  - **ADR-002** (uXRCE-DDS, autopilot I/O in one package): unchanged. The agent and the bridge run
+    in the container; the Pixhawk serial device is passed through. The transport boundary is
+    untouched.
+  - **ADR-006** (Pi 5 + AI HAT+ + Camera Module 3, onboard inference): unchanged in substance and
+    **refined in mechanism**. ADR-006 says "Camera Module 3 via libcamera/picamera2" — that remains
+    true, but libcamera now runs on the **host**, not in the process that consumes the frames.
+    HailoRT userspace is in the container; the `hailo_pci` kernel driver is on the host, and the
+    HailoRT wheel version **must match** the host `hailo-all` version (a mismatch fails at runtime,
+    not build time).
+- **Consequences / flags:**
+  - `docker/Dockerfile.pi`, `docker/run_pi.sh`, `docker/README.md`, and
+    `shark_isr_perception/camera_node.py` (+ `test/test_camera_node.py`) implement this.
+  - **Frame timestamps are read-time, not capture-time** — no capture stamp crosses the UDP
+    boundary. Lag converts directly to geolocation error (~10 m/s of lag at cruise, against a 39 m
+    diagonal footprint per ADR-010). **Total lag is unmeasured — measure at B08.** Note the obvious
+    mitigation does not work: `CAP_PROP_BUFFERSIZE` is unsupported on the FFMPEG backend
+    (`set()` returns `False` on OpenCV 4.5.4 / libavformat 58.45, which is what this container
+    ships), so the depth-1 request is a no-op on the `udp://` path. If lag proves to matter, drain
+    per tick or move capture into a thread; `picamera2` inside the container is the last resort
+    (more fragile, lower latency).
+  - **HailoRT version coupling is a hard requirement, not a soft one.** The pip wheel is
+    bindings-only — its `_pyhailort.so` carries `DT_NEEDED: libhailort.so.4.20.0`, a *fully
+    versioned* filename rather than a `.so.4` SONAME. `run_pi.sh` bind-mounts the host's library
+    so userspace and kernel driver are the same build, but that does **not** make the wheel adapt
+    to the host: upgrade `hailo-all` to 4.21 and `import hailo_platform` fails outright at load
+    time. Rebuild the image with a matching wheel on every `hailo-all` upgrade.
+  - **`--ipc host` is required, but not yet load-bearing.** `--network host` shares the network
+    namespace and not the IPC namespace, so each container gets its own `/dev/shm`. Fast-DDS
+    discovers over UDP (which works) and then prefers its shared-memory transport for same-host
+    data — so participants match, `ros2 topic list` looks healthy, and the writer pushes into a
+    ring buffer in its own `/dev/shm` that nobody reads. Silent data-plane failure behind a
+    healthy control plane. In the *current* single-container design nothing needs this (the host
+    runs no ROS 2); it becomes load-bearing as soon as the uXRCE-DDS agent and the stack are split
+    across two `docker run` invocations. Set now so that split fails loudly rather than silently.
+  - **The MJPEG demuxer is forced to remove a race, not because ffmpeg cannot detect MJPEG.**
+    ffmpeg probes a bare elementary MJPEG stream from a file without difficulty. The problem is
+    specific to joining a live `udp://` source mid-stream: the first `probesize` bytes may contain
+    no JPEG SOI marker, so `ff_mjpeg_probe` scores low and detection is non-deterministic —
+    sometimes fine, sometimes mis-detected, sometimes the open-timeout fires inside
+    `avformat_find_stream_info`. `OPENCV_FFMPEG_CAPTURE_OPTIONS=input_format;mjpeg` forces the
+    demuxer and removes the race.
+  - `rpicam-vid --width/--height` must equal `image_width`/`image_height` in
+    `config/perception.yaml`, or the stretch invalidates the `fx/fy/cx/cy` intrinsics.
+- **Status:** Locked (2026-08-04); consequences corrected 2026-08-13 after empirical checking (the
+  original entry asserted `CAP_PROP_BUFFERSIZE` controlled queue depth and that the library mount
+  removed version coupling — both wrong). **B07a host gates passed 2026-08-10**
+  (`hailortcli fw-control identify` → Hailo-8 / HAILO8L, firmware 4.20.0; `rpicam-hello
+  --list-cameras` → imx708). **B07b container gates partially passed**: `docker build`, in-container
+  `colcon build`, and in-container HailoRT device access all work; `ros2 topic hz /camera/image_raw`
+  at `camera_fps` is **still open**. See `HARDWARE_BRINGUP.md` B07 and `docs/logs/bringup_log.md`.
 
 ---
 

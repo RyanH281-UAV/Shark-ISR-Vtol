@@ -48,3 +48,27 @@ training/train_run.log
 
 # Heavy local render sources (4K stills / mp4) — not for the public repo
 site-v2/public/assets/
+
+# HailoRT wheel — proprietary redistributable, version must track the host driver.
+# See docker/README.md for where to fetch it.
+docker/*.whl
+
+# Secrets — belt and braces. Nothing matches these today; that's the point.
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.ppk
+id_rsa
+id_ed25519
+.netrc
+secrets.*
+credentials.*
+
+# Superseded site generations. Tracked files removed 2026-08-13; these lines stop
+# their leftover node_modules/.next (no longer covered by their own .gitignore)
+# from being swept back in by `git add -A`.
+site-v2/
+legacy/

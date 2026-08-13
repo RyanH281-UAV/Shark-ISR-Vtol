@@ -19,7 +19,9 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [x] micro XRCE-DDS agent (snap `micro-xrce-dds-agent --edge`) + `px4_msgs release/1.16` in workspace
 - [x] Gazebo coastal world: `sim/worlds/shark_isr_coastal.sdf` (Cottesloe Beach, Perth WA; ocean surface)
 - [x] `scripts/run_sim.sh` — shark-ISR labelled, isolated from SkimWing, starts agent + SITL
-- [x] End-to-end verify: `ros2 topic list | grep fmu` shows PX4 uORB topics via DDS bridge (campaign T06–T11)
+- [~] End-to-end verify: `ros2 topic list | grep fmu` shows PX4 uORB topics via DDS bridge
+      (exercised by the T06–T11 campaign, but no run output was committed — see
+      `docs/SITL_PROCEDURE.md` status note)
 
 ## Phase 3 — Autopilot bridge (ADR-002)
 - [x] `AutopilotCommand.srv` added to `shark_isr_interfaces` (deferred from Phase 1, ADR-009)
@@ -78,6 +80,12 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [ ] Mass + power budget vs MTOW (docs/HORNET_PLATFORM.md)
 - [ ] Spec/source a ≥5 A 5 V rail (owned LM2596S 3 A likely insufficient)
 - [ ] Thermal solution for Pi 5 + AI HAT+ in the fuselage (active cooler + airflow); verify no throttling
-- [ ] Pi 5 + AI HAT+ + Camera Module 3 bench integration; HailoRT detector running
+- [~] Pi 5 + AI HAT+ + Camera Module 3 bench integration; HailoRT detector running.
+      **B07a host gates passed** 2026-08-10 (`hailortcli fw-control identify`,
+      `rpicam-hello --list-cameras`), on genuine boot media after the 2026-08-04
+      storage-corruption incident was traced to counterfeit AliExpress SD cards.
+      **B07b container gates 3 of 4** 2026-08-13 (build ✓, in-container `colcon build` ✓,
+      Hailo device reachable ✓); `/camera/image_raw` at `camera_fps` still open.
+      See `HARDWARE_BRINGUP.md` B07 for both, plus the full incident writeup. Then B08.
 - [ ] Measure Wh/km in flight; correct the range estimate in docs/DECISIONS.md
 - [ ] CASA/ops checklist (docs/REGULATORY.md) before any flight

@@ -16,7 +16,8 @@ OpenCV, converts BGR→`rgb8`, and republishes. No libcamera inside the containe
 ### `detector_node`
 Subscribes to `/camera/image_raw` and `/vehicle_state`.  
 In **sim mode** (`use_sim:=true`): publishes probabilistic mock `Detection` messages to exercise the full pipeline.  
-In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and runs onboard inference on each frame.
+In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and runs the forward pass on each frame.
+**Not yet functional.** The output decoder is unwritten — `_hailo_forward` carries a placeholder parser (no DFL decode, no NMS) that does not match this model's two output layers, and `hef_path` is empty by default. Real mode produces no detections until bench gate B08.
 
 ## Interfaces
 
@@ -47,7 +48,7 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 
 Camera Module 3 **Standard lens** (Sony IMX708). Diagonal FOV ~66° (half-angle 33°).  
 At 640×480: `fx = fy ≈ 616 px` (approximate — calibrate for production).  
-**Patrol altitude: 30 m AGL.** Ground footprint ≈ 39 m. Shark pixel size ≈ 41 px at 640 px input (above 32 px detection threshold).
+**Patrol altitude: 30 m AGL.** Ground footprint ≈ 39 m *diagonal* (33° is the diagonal half-angle); cross-track width is ~31 m, which is what `guidance.yaml` uses for lane spacing. Shark pixel size ≈ 41 px at 640 px input, assuming a **2.5 m target length** — above the 32 px detection threshold (rule-of-thumb for small-object YOLO, not a measured figure for this model).
 
 ## Geolocation (`geolocate.py`)
 
@@ -57,7 +58,7 @@ Pinhole + flat-earth. No ROS dependencies — fully unit-testable.
 pixel (u, v)
   → normalised ray in camera optical frame      [u/fx, v/fy, 1]
   → rotated to body FLU                         R_cam_to_body (nadir: top=forward)
-  → rotated to ENU world                        attitude_q conjugate
+  → rotated to ENU world                        attitude_q applied directly (body→world, ADR-011)
   → intersected with z=0 plane                  t = agl_m / (-ray_enu_z)
   → ENU offset                                  (dx_east, dy_north) = t × ray_enu_xy
   → WGS-84 delta                                flat-earth lat/lon

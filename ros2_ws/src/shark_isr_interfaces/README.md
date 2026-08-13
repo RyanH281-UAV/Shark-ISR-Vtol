@@ -58,7 +58,7 @@ No other package handles this conversion.
 | `altitude_amsl_m` | `float32` | m AMSL | Barometric/GPS altitude |
 | `velocity_enu_m_s` | `geometry_msgs/Vector3` | m/s ENU | x=East, y=North, z=Up |
 | `groundspeed_m_s` | `float32` | m/s | Horizontal speed magnitude |
-| `attitude_q` | `geometry_msgs/Quaternion` | — | ENU world → body FLU quaternion |
+| `attitude_q` | `geometry_msgs/Quaternion` | — | body FLU → ENU world quaternion (ADR-011) |
 | `agl_m` | `float32` | m | Above-ground-level estimate |
 | `agl_valid` | `bool` | — | true if AGL source is reliable |
 | `vtol_phase` | `uint8` | VTOL_PHASE_* | HOVER/TRANS_TO_FW/TRANS_TO_MC/FIXED_WING |

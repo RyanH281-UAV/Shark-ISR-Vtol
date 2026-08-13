@@ -84,7 +84,10 @@ export default function GateDemo() {
             s.inFrame = !s.inFrame;
           }
           const hit = s.inFrame && Math.random() < 0.85;
-          s.conf = clamp(s.conf + (hit ? GAIN : -DECAY));
+          // Mirrors confidence_gate.py exactly: on_detection() adds gain × confidence,
+          // and on_tick() subtracts decay on EVERY tick — not only on a miss. Detection
+          // confidence is pinned at 1.0 here since the demo has no detector.
+          s.conf = clamp(s.conf - DECAY + (hit ? GAIN : 0));
           if (s.conf >= TAU) {
             s.sustain++;
             if (s.sustain >= K_SUSTAIN) {
@@ -147,10 +150,13 @@ export default function GateDemo() {
             Try to fool the gate
           </h2>
           <p className="mt-4 leading-relaxed text-muted">
-            This runs the flight code&apos;s decision rule with the flight
-            code&apos;s constants (τ={TAU}, K={K_SUSTAIN}). Inject a detection —
-            a single frame spikes the score and dies. Only sustained evidence
-            transitions the aircraft.
+            A browser model of the flight code&apos;s decision rule, running the
+            same accumulate/decay dynamics and the same constants (τ={TAU},
+            K={K_SUSTAIN}, gain={GAIN}, decay={DECAY}) as{" "}
+            <code className="text-search">confidence_gate.py</code>. Inject a
+            detection — a single frame spikes the score and dies. Only sustained
+            evidence transitions the aircraft. Simulated: no aircraft, no
+            detector, no flight data.
           </p>
         </Reveal>
 
@@ -232,7 +238,7 @@ export default function GateDemo() {
               <div className="mb-3 flex items-center gap-2 border-b border-lined pb-2">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-search" />
                 <span className="font-mono text-[0.62rem] uppercase tracking-[0.18em] text-muted">
-                  guidance/log · live
+                  guidance/log · browser simulation — not flight data
                 </span>
               </div>
               <div className="flex h-56 flex-col justify-end gap-1.5 overflow-hidden font-mono text-[0.72rem] leading-relaxed">

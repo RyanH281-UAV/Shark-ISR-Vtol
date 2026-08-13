@@ -21,7 +21,7 @@ flowchart TB
         end
     end
 
-    GCS <-->|MAVLink / telemetry| AP
+    GCS <-->|MAVLink telemetry radio| INNER
     AP <-->|uXRCE-DDS| INNER
     PER -->|Detection msgs| GUI
     GUI -->|Guided setpoints / mode req| AP
@@ -40,7 +40,7 @@ flowchart TB
 | Outer loop guidance | `shark_isr_guidance` | Search pattern, detection-triggered orbit/loiter, setpoint generation |
 | Perception | `shark_isr_perception` | Cam3 → Hailo-8L `.hef` detector (onboard); publish geolocated detections |
 | Mission management | `shark_isr_mission` | Phase sequencing (transit → search → track → return), arbitration |
-| Autopilot I/O | `shark_isr_autopilot` | One package talks to PX4 (uXRCE-DDS + px4_msgs; MAVLink fallback) |
+| Autopilot I/O | `shark_isr_autopilot` | One package talks to PX4 (uXRCE-DDS + px4_msgs). A MAVLink fallback stays *reachable* behind this package boundary but **is not implemented** — nothing needs it, since the GCS speaks MAVLink to the Pixhawk directly (ADR-015) |
 | Telemetry / logging | `shark_isr_telemetry` | Record everything; relay summaries to GCS |
 
 ## Dataflow contract (define these first)

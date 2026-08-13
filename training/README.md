@@ -1,6 +1,10 @@
 # Shark Detector Training Pipeline
 
-Fine-tunes YOLOv8s on merged aerial shark datasets → exports ONNX → compiles to Hailo `.hef`.
+Fine-tunes YOLOv8n on merged aerial shark datasets → exports ONNX → compiles to Hailo `.hef`.
+
+> The deployed model is **YOLOv8n** (ADR-013) — confirmed by `runs/detect/train/args.yaml`
+> (`model: yolov8n.pt`). Note `03_train.py` still *defaults* to `yolov8s.pt`; pass `--model
+> yolov8n.pt` to reproduce the shipped weights.
 
 ## Pipeline overview
 

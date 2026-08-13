@@ -49,7 +49,7 @@ const BOARDS = [
       ["Scored", "0.945 mAP50 · 95% recall, held-out"],
     ],
     detail:
-      "Inference happens on the aircraft. Losing every radio link costs situational awareness — never autonomy. There is no video downlink in the decision loop.",
+      "Inference is designed to happen on the aircraft: losing every radio link costs situational awareness, never autonomy, and there is no video downlink in the decision loop. The model is compiled; running it on the NPU is the next bench gate.",
   },
   {
     id: "pi",
@@ -77,7 +77,7 @@ const BOARDS = [
     specs: [
       ["Firmware", "PX4 v1.16"],
       ["Owns", "Attitude, tilt transition, every failsafe"],
-      ["Failsafe", "Companion death → RTL, SITL-verified (T07)"],
+      ["Failsafe", "Companion death → PX4 exits Offboard, SITL-verified (T07)"],
       ["Link", "uXRCE-DDS over serial"],
     ],
     detail:

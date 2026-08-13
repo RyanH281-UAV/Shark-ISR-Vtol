@@ -138,8 +138,8 @@ const BEATS = [
   {
     mode: "CRUISE",
     kicker: "PHASE 03 · PERSISTENT PATROL",
-    title: ["Hours on station.", "Deciding alone."],
-    body: "22:1 lift-to-drag cruise while the onboard NPU watches the water. Detect → track happens on the aircraft, not on a screen.",
+    title: ["Built to decide", "alone."],
+    body: "Designed around a 22:1 lift-to-drag cruise (manufacturer figure) with the detector onboard, so detect → track resolves on the aircraft rather than on a screen. Endurance and onboard inference are both pending bench and flight test.",
   },
 ];
 

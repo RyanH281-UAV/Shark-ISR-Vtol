@@ -19,8 +19,15 @@ Then this node (in the Humble container, --network host) reads udp://127.0.0.1:8
 
 Timestamp caveat: no capture time crosses the UDP boundary, so frames are stamped
 when this node READS them, not when the sensor exposed them. That bias lands in
-geolocation (detector_node pairs each frame with the latest vehicle_state). Buffer
-depth is pinned to 1 to stop it accumulating — measure the residual at B08.
+geolocation (detector_node pairs each frame with the latest vehicle_state).
+
+The obvious mitigation does NOT work: CAP_PROP_BUFFERSIZE is unsupported on the
+FFMPEG backend (set() returns False, get() returns 0.0 on OpenCV 4.5.4 /
+libavformat 58.45 — the pairing this container ships). We set it anyway because it
+is harmless and correct on other backends, but nothing about queue depth is
+actually being controlled here. Total lag is therefore UNMEASURED — measure at B08,
+and if it matters, drain per tick (read N, publish the last) or move capture to a
+thread with a latest-frame slot.
 
 Params (config/perception.yaml)
 -------------------------------
@@ -34,6 +41,7 @@ Params (config/perception.yaml)
 
 from __future__ import annotations
 
+import os
 import time
 
 import numpy as np
@@ -75,6 +83,23 @@ class CameraNode(Node):
         self._info_pub = self.create_publisher(CameraInfo, "camera/camera_info", 10)
         self._info_msg = self._build_camera_info()
 
+        # Force the MJPEG demuxer rather than letting ffmpeg probe.
+        #
+        # Not because ffmpeg can't detect bare MJPEG — it can, reliably, from a
+        # file. The problem is specific to joining a live udp:// source: the
+        # receiver starts mid-JPEG, so the first `probesize` bytes may contain no
+        # SOI marker at all, ff_mjpeg_probe scores low, and detection becomes
+        # non-deterministic — sometimes fine, sometimes mis-detected, sometimes the
+        # open-timeout fires inside avformat_find_stream_info. Forcing the demuxer
+        # removes the race.
+        #
+        # OpenCV's ffmpeg backend special-cases `input_format`: it resolves the
+        # value via av_find_input_format() and passes it as the `fmt` argument to
+        # avformat_open_input(). Read per-open (not cached at import), so this
+        # placement is safely early.
+        if "://" in self._url:
+            os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "input_format;mjpeg")
+
         # cv2 imported lazily so the package still builds/tests off-Pi (WSL/CI),
         # mirroring detector_node's lazy HailoRT import.
         import cv2  # type: ignore
@@ -82,7 +107,11 @@ class CameraNode(Node):
         self._cv2 = cv2
         self._cap = None
         self._size_warned = False
-        self._last_open_attempt = 0.0
+        # -inf, not 0.0: time.monotonic() is uptime on Linux, so 0.0 would make the
+        # constructor's first _open_stream() rate-limit itself away within 3 s of
+        # boot, leaving self._cap as None for the first timer tick.
+        self._last_open_attempt = float("-inf")
+        self._read_failures = 0
         self._open_stream()
 
         # Poll the stream on a timer — the stream self-paces, so a read() that
@@ -139,11 +168,19 @@ class CameraNode(Node):
             )
             return False
 
-        # Keep one frame in flight. The FFMPEG/UDP backend otherwise queues frames,
-        # and that backlog never drains: detector_node geolocates each frame against
-        # the LATEST vehicle_state, so read lag converts straight into position error
-        # (~10 m per second of lag at cruise, against a 39 m footprint).
-        self._cap.set(self._cv2.CAP_PROP_BUFFERSIZE, 1)
+        # Ask for a depth-1 buffer. NOTE: this is a no-op on the FFMPEG backend
+        # (unsupported — set() returns False), so it buys nothing for the udp://
+        # path; it is kept because it DOES work for a /dev/video0 UVC source, which
+        # stream_url also accepts. Read lag converts straight into geolocation error
+        # (detector_node pairs each frame with the LATEST vehicle_state, ~10 m per
+        # second of lag at cruise), so the real lag budget has to be measured at B08
+        # rather than assumed away by this line.
+        if not self._cap.set(self._cv2.CAP_PROP_BUFFERSIZE, 1):
+            self.get_logger().debug(
+                "CAP_PROP_BUFFERSIZE unsupported on this backend — queue depth "
+                "is not being controlled; frame lag is unmeasured (B08)."
+            )
+        self._read_failures = 0
         self.get_logger().info(f"CameraNode: streaming from {self._url!r}")
         return True
 
@@ -164,17 +201,38 @@ class CameraNode(Node):
         return info
 
     def _publish_frame(self) -> None:
-        if not self._cap.isOpened() and not self._open_stream():
+        if self._cap is None or not self._cap.isOpened():
+            self._open_stream()
             return
 
+        # Stamp BEFORE the read: read() blocks for the transport interval, so a
+        # stamp taken after it is read-COMPLETION time and carries the jitter of
+        # however long the block lasted.
+        stamp = self.get_clock().now().to_msg()
         ok, frame = self._cap.read()
         if not ok or frame is None:
-            # Publisher went away or the stream stalled — reopen rather than spin
-            # silently on a dead handle.
+            # isOpened() stays True on a stalled or EOF'd FFMPEG capture, so we
+            # cannot rely on it to notice death — release explicitly, otherwise
+            # every tick blocks in read() for _READ_TIMEOUT_MS against a dead
+            # handle while the rate-limiter turns _open_stream() into a no-op.
+            self._read_failures += 1
             self.get_logger().warn(
-                "Empty frame from stream — reopening.", throttle_duration_sec=5.0
+                f"Empty frame from stream (x{self._read_failures}) — reopening.",
+                throttle_duration_sec=5.0,
             )
-            self._open_stream()
+            self._cap.release()
+            self._cap = None
+            self._size_warned = False        # a restarted stream may be a new size
+            return
+
+        if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+            # A grayscale or BGRA decode would otherwise raise inside this callback,
+            # or silently produce data whose length disagrees with step*height.
+            self.get_logger().error(
+                f"Unexpected frame format {frame.shape}/{frame.dtype} — expected "
+                f"HxWx3 uint8. Dropping frame.",
+                throttle_duration_sec=5.0,
+            )
             return
 
         if frame.shape[1] != self._w or frame.shape[0] != self._h:
@@ -191,7 +249,6 @@ class CameraNode(Node):
                 self._size_warned = True
             frame = self._cv2.resize(frame, (self._w, self._h))
 
-        stamp = self.get_clock().now().to_msg()
         header = Header()
         header.stamp = stamp
         header.frame_id = "camera_optical"

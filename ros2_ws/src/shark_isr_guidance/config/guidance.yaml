@@ -25,7 +25,7 @@ guidance_node:
     # gate_k_sustain consecutive guidance ticks. Detections add
     # gate_gain × confidence; every tick subtracts gate_decay. In TRACK,
     # score ≤ gate_lost means the target is gone → resume SEARCH.
-    # Values mirror the site decision model (site-v2/lib/guidance.ts).
+    # Values mirror the site decision model (site-v3/lib/guidance.ts).
     gate_tau: 0.85
     gate_k_sustain: 6
     gate_gain: 0.12
