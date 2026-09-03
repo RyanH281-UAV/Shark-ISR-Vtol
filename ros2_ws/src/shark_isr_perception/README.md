@@ -42,7 +42,7 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 | `use_sim` | bool | `true` | Sim mode (mock detections, no HailoRT) |
 | `hef_path` | str | `""` | Path to `.hef` model on Pi 5 (real mode) |
 | `confidence_threshold` | float | `0.45` | Minimum score to publish Detection |
-| `mock_detection_prob` | float | `0.02` | Per-frame mock detection probability (sim) |
+| `mock_detection_prob` | float | `0.02` | Per-frame mock detection probability (sim) — live-tunable via `ros2 param set /detector_node mock_detection_prob <v>`; `mock_burst_frames` likewise |
 | `image_width` | int | `640` | Camera image width [px] — read by the camera nodes only; `detector_node` gets it from `/camera/camera_info` (ADR-018) |
 | `image_height` | int | `480` | Camera image height [px] — same |
 | `fx`, `fy`, `cx`, `cy` | float | `616, 616, 320, 240` | Camera intrinsics [px] — same |

@@ -37,6 +37,7 @@ from typing import Optional
 
 import numpy as np
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import Header
@@ -65,6 +66,12 @@ class DetectorNode(Node):
         self._mock_prob: float = self.get_parameter("mock_detection_prob").value
         self._mock_burst_frames: int = self.get_parameter("mock_burst_frames").value
         self._mock_burst_remaining: int = 0
+
+        # mock_detection_prob/mock_burst_frames must be live-tunable: `ros2
+        # param set` on this node otherwise "succeeds" (the parameter server
+        # accepts it) while _run_sim_detection keeps using the __init__-time
+        # cached value forever — a silent no-op a caller has no way to detect.
+        self.add_on_set_parameters_callback(self._on_params_change)
 
         self._vehicle_state: Optional[VehicleState] = None
         # Intrinsics (ADR-018): read from CameraInfo, not our own params — both
@@ -97,6 +104,14 @@ class DetectorNode(Node):
 
     def _camera_info_cb(self, msg: CameraInfo) -> None:
         self._camera_info = msg
+
+    def _on_params_change(self, params) -> SetParametersResult:
+        for p in params:
+            if p.name == "mock_detection_prob":
+                self._mock_prob = p.value
+            elif p.name == "mock_burst_frames":
+                self._mock_burst_frames = p.value
+        return SetParametersResult(successful=True)
 
     def _image_cb(self, msg: Image) -> None:
         if self._use_sim:

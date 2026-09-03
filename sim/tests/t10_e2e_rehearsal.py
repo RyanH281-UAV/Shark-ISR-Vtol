@@ -24,7 +24,7 @@ Run:
 Overall timeout: 120 s
 """
 
-import sys, threading, time
+import subprocess, sys, threading, time
 import rclpy
 import _ros_harness
 from rclpy.node import Node
@@ -44,6 +44,29 @@ PX4_QOS = QoSProfile(
 SEARCH_LAT = -31.998    # SITL home (Cottesloe Beach, Perth WA)
 SEARCH_LON = 115.748
 OVERALL_TIMEOUT = 120   # s
+
+# This test's own negative-burst check (below) only means something if nothing
+# ELSE is feeding /detection. The standard launcher runs perception alongside
+# T10 (mock_detection_prob=0.02/frame by default), and a random burst that
+# happens to straddle the TRANSIT→SEARCH boundary reaches guidance right when
+# this test starts its check — indistinguishable from the gate failing. Mute
+# detector_node's own trigger for the duration of this test rather than
+# requiring perception to be launched separately; restored in the finally
+# block below regardless of outcome. Non-fatal if detector_node isn't running.
+DETECTOR_NODE = '/detector_node'
+MOCK_DETECTION_PROB_DEFAULT = '0.02'  # shark_isr_perception/config/perception.yaml
+
+
+def _set_mock_detection_prob(value: str) -> None:
+    r = subprocess.run(
+        ['ros2', 'param', 'set', DETECTOR_NODE, 'mock_detection_prob', value],
+        capture_output=True, text=True, timeout=5,
+    )
+    if r.returncode == 0:
+        print(f'[T10] detector_node mock_detection_prob → {value}')
+    else:
+        print(f'[T10] (detector_node not reachable to set mock_detection_prob — '
+              f'ok if perception is not running: {r.stderr.strip()})')
 
 PHASE_LABELS = {
     SearchState.PHASE_IDLE: 'IDLE',
@@ -102,6 +125,8 @@ def _run(node: Node) -> int:
         print('\033[31mFAIL: mission_command not available\033[0m')
         return 1
 
+    _set_mock_detection_prob('0.0')
+
     def remaining() -> float:
         return OVERALL_TIMEOUT - (time.monotonic() - t_start)
 
@@ -133,6 +158,23 @@ def _run(node: Node) -> int:
         print('\033[31mFAIL: CMD_START never accepted\033[0m')
         return 1
 
+    try:
+        return _run_mission(node, cli, ev, pub_det, t_start, remaining, timed_out, phases_seen)
+    finally:
+        # A failure anywhere below leaves the mission off-IDLE — return it so
+        # the next test in the run doesn't inherit a stuck state (this is why
+        # T11 used to fail right after a failed T10: it waited on an IDLE
+        # that would never come).
+        if not ev['idle'].is_set():
+            resp = _call_mc(cli, MissionCommand.Request.CMD_RETURN)
+            if resp is not None and resp.accepted:
+                ev['return'].wait(15)
+        # Restore regardless of outcome — T11 (run right after T10 in the
+        # standard launcher) needs its own random bursts back on.
+        _set_mock_detection_prob(MOCK_DETECTION_PROB_DEFAULT)
+
+
+def _run_mission(node, cli, ev, pub_det, t_start, remaining, timed_out, phases_seen) -> int:
     print('[T10] Waiting for ARM...')
     if not ev['armed'].wait(min(30, remaining())):
         print('\033[31mFAIL: vehicle not armed within 30s\033[0m')
@@ -175,6 +217,7 @@ def _run(node: Node) -> int:
     # Confidence gate (ADR-016), negative half: a short burst is one lucky
     # blip — it must NOT transition the aircraft.
     print('[T10] Injecting 5-frame burst (must NOT trigger TRACK)...')
+    ev['track'].clear()  # drop any stale TRACK seen before this test's own CMD_START
     inject(5)
     if ev['track'].wait(5):
         print('\033[31mFAIL: 5-frame burst triggered TRACK — confidence gate '
