@@ -54,7 +54,7 @@ from std_msgs.msg import Header
 def _bgr_frame_to_rgb_bytes(bgr: np.ndarray) -> bytes:
     """OpenCV decodes to BGR; detector_node expects rgb8. Swap channel order.
 
-    ponytail: if colours look inverted on the bench, this swap is the knob —
+    TODO: if colours look inverted on the bench, this swap is the knob —
     some stream/codec paths already hand back RGB. Flip or drop it here.
     """
     return np.ascontiguousarray(bgr[:, :, ::-1]).tobytes()
@@ -115,7 +115,7 @@ class CameraNode(Node):
         self._open_stream()
 
         # Poll the stream on a timer — the stream self-paces, so a read() that
-        # blocks briefly is fine on the bench. ponytail: single-threaded poll;
+        # blocks briefly is fine on the bench. TODO: single-threaded poll;
         # move to a capture thread only if read latency shows up in B08.
         period = 1.0 / fps
         self.create_timer(period, self._publish_frame)

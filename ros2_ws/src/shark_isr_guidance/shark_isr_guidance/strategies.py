@@ -1,5 +1,5 @@
 """
-strategies.py — pluggable search strategies (ADR-013).
+strategies.py — pluggable search strategies (ADR-012).
 
 Pure math, no ROS deps. Unit-tested in test/test_strategies.py.
 
@@ -46,7 +46,7 @@ class LawnmowerStrategy:
     The coverage floor. Caches the path per region and cycles through it in order,
     resuming from where it left off. ``vehicle_pos`` is ignored — after a mission
     diversion it resumes at the next path index, not the nearest lane.
-    # ponytail: nearest-lane resume when divert-then-resume coverage gaps bite.
+    # TODO: nearest-lane resume when divert-then-resume coverage gaps bite.
     """
 
     def __init__(self, strip_width_m: float = 60.0) -> None:
@@ -102,7 +102,7 @@ class PersistentPatrolStrategy:
     FORCE-VISIT (hard constraint): if any cell's time-since-observed exceeds T,
     the only allowed target is the stalest cell — probability weighting is
     suspended. This is what makes T unviolatable; probability re-growth alone
-    gives only expected, not worst-case, revisit (ADR-013).
+    gives only expected, not worst-case, revisit (ADR-012).
 
     Otherwise (nominal): go to the cell maximising threat-weight × probability.
     """

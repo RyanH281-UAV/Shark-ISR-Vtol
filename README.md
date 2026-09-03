@@ -72,10 +72,10 @@ flowchart LR
 | Layer | Owns |
 |---|---|
 | **PX4** | Inner loop, the tilt transition, every failsafe. ROS 2 can only *ask*. |
-| **ROS 2** | Mission, guidance, perception, telemetry. Seven interfaces (4 msg, 3 srv), frames + units explicit, frozen before any node was written (ENU/FLU everywhere; all NED↔ENU conversion in one package). |
+| **ROS 2** | Mission, guidance, perception, telemetry. Seven interfaces (4 msg, 3 srv) — six frozen before any node was written, the seventh (`AutopilotCommand`) added in Phase 3 — frames + units explicit (ENU/FLU everywhere; all NED↔ENU conversion in one package). |
 
 The companion computer is architecturally incapable of overriding a failsafe. Its total failure
-degrades to an autopilot-handled RTL.
+degrades to an autopilot-handled failsafe (Position mode in SITL today; RTL once `COM_OBL_ACT` is set at hardware bring-up, gate B13).
 
 ---
 
@@ -184,7 +184,7 @@ those two claims count as sim-verified.*
 | Test | Proves | Evidence |
 |---|---|---|
 | **T06** — Orbit geometry | Bridge holds a precise 30 m circular orbit | 20/20 setpoints on circle (min=max=mean=30.00 m) |
-| **T07** — Companion failsafe | If companion stops streaming, PX4 takes the aircraft back | Offboard loss → PX4 exits OFFBOARD in 5.1 s (COM_OF_LOSS_T) |
+| **T07** — Companion failsafe | If companion stops streaming, PX4 leaves Offboard on its own. What it does next is `COM_OBL_ACT` (unset in SITL → Position mode); RTL on hardware is gate B13 | Offboard loss → PX4 exits OFFBOARD in 5.1 s (COM_OF_LOSS_T) |
 | **T08** — Operator abort | Operator can abort; aircraft returns home under autopilot | CMD_ABORT drove PX4 to nav_state RTL |
 | **T09** — Low-battery failsafe | Low battery auto-triggers return before aircraft is stranded | Threshold crossing → mission RETURNING (tuneable live via ROS 2 param) |
 | **T10** — End-to-end mission | Full state machine runs start-to-finish without intervention | All 5 phases visited IDLE→TRANSIT→SEARCH→TRACK→RETURN in 7.0 s — **recorded against the pre-gate script; the current test floors at ~9 s, so this figure is stale** |
