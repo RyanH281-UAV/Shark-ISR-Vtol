@@ -109,6 +109,13 @@ class DetectorNode(Node):
         for p in params:
             if p.name == "mock_detection_prob":
                 self._mock_prob = p.value
+                # A burst already in flight (self._mock_burst_remaining > 0)
+                # is independent of mock_prob and would otherwise keep firing
+                # up to mock_burst_frames more detections regardless of this
+                # change — muting has to mean "stop now", not just "stop
+                # starting new ones". Cancel it outright rather than only on
+                # value==0: a caller lowering the rate mid-burst means it too.
+                self._mock_burst_remaining = 0
             elif p.name == "mock_burst_frames":
                 self._mock_burst_frames = p.value
         return SetParametersResult(successful=True)

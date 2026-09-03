@@ -33,6 +33,15 @@ def test_mock_detection_prob_takes_effect_live(node):
     assert node._mock_prob == 0.0
 
 
+def test_muting_cancels_an_in_flight_burst(node):
+    """The first fix (caching self._mock_prob) wasn't enough: a burst already
+    in progress is tracked by _mock_burst_remaining, which is independent of
+    mock_prob and would otherwise keep firing regardless of this change."""
+    node._mock_burst_remaining = 25  # a burst is actively firing
+    node._on_params_change([Parameter('mock_detection_prob', value=0.0)])
+    assert node._mock_burst_remaining == 0
+
+
 def test_mock_burst_frames_takes_effect_live(node):
     result = node._on_params_change([Parameter('mock_burst_frames', value=5)])
     assert result.successful
