@@ -174,6 +174,7 @@ class TelemetryNode(Node):
         if self._search is not None:
             record['phase'] = _PHASE_NAMES.get(self._search.phase, str(self._search.phase))
             record['coverage'] = round(self._search.coverage_fraction, 4)
+            record['max_cell_age_s'] = round(self._search.max_cell_age_s, 1)
         self._write(self._f_flight, record)
 
     def _timer_summary(self) -> None:
@@ -197,6 +198,7 @@ class TelemetryNode(Node):
             phase = _PHASE_NAMES.get(s.phase, '?')
             parts.append(
                 f'PHASE={phase} cov={s.coverage_fraction:.1%} '
+                f'max_age={s.max_cell_age_s:.0f}s '
                 f't={s.time_on_station_s:.0f}s dets={self._detection_count}'
             )
         else:

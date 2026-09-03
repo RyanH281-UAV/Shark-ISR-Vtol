@@ -45,6 +45,9 @@ any ─low_battery─▶ RETURNING  (failsafe)
 | `arm_timeout_s` | 10.0 | Seconds before aborting arm sequence |
 | `transit_timeout_s` | 300.0 | Seconds before starting search if transit hasn't completed |
 | `track_timeout_s` | 120.0 | Seconds in TRACKING before auto-resuming SEARCH |
+| `search_length_m` | 0.0 | Along-shore strip extent [m]; 0 = circular area (ADR-018). Overridden per-mission by `CMD_START`'s own `search_length_m` when it is > 0 |
+| `search_width_m` | 120.0 | Cross-shore strip extent [m] |
+| `shore_bearing_rad` | 0.0 | ENU bearing of the shoreline [rad] (REP-103) |
 
 ## Run in isolation
 

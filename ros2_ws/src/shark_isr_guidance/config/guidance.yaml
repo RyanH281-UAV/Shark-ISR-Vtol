@@ -18,6 +18,10 @@ guidance_node:
     arrival_threshold_m: 15.0
 
     # Minimum Detection.confidence to feed the confidence gate.
+    # Sim's mock detector (shark_isr_perception) hardcodes confidence=0.75 —
+    # a fixed 0.05 margin above this, in a different package's YAML with
+    # nothing enforcing agreement. Raise this above 0.75 and sim detections
+    # silently stop reaching the gate.
     detection_confidence_threshold: 0.70
 
     # ── Confidence gate (ADR-016) ─────────────────────────────────────────────
@@ -26,14 +30,20 @@ guidance_node:
     # gate_gain × confidence; every tick subtracts gate_decay. In TRACK,
     # score ≤ gate_lost means the target is gone → resume SEARCH.
     # Values mirror the site decision model (site-v3/lib/guidance.ts).
+    # NOTE: gate_gain applies per DETECTION, gate_decay applies per guidance
+    # TICK (update_hz above) — so effective sensitivity depends on the ratio
+    # of camera_fps (shark_isr_perception/config/perception.yaml) to update_hz.
+    # Changing either Hz silently retunes how fast the gate rises.
     gate_tau: 0.85
     gate_k_sustain: 6
     gate_gain: 0.12
     gate_decay: 0.05
     gate_lost: 0.25
 
-    # ── Search strategy (ADR-012) ─────────────────────────────────────────────
-    # lawnmower         — fixed boustrophedon (SITL-verified baseline, T10)
+    # ── Search strategy (ADR-012/ADR-018) ─────────────────────────────────────
+    # All three are belief-driven; lawnmower ignores probability but still
+    # reads the same Bayesian map/region (see strategies.py).
+    # lawnmower         — complete-coverage boustrophedon (SITL-verified baseline, T10)
     # persistent_patrol — DEFAULT: threat-weighted patrol, hard revisit bound
     # bayesian_greedy   — highest-probability cell (SAR / first-find)
     search_strategy: persistent_patrol
@@ -43,6 +53,12 @@ guidance_node:
     # Probability re-growth toward the prior [1/s] — cleared water doesn't
     # stay cleared; targets move.
     regrowth_alpha: 0.001
+
+    # Threat-weighting falloff scale [m] for persistent_patrol over a real
+    # strip region (ADR-018): weight = exp(-cross_shore_offset / this). No
+    # effect on the legacy circular search area (no shoreline to weight
+    # against — see strategies.threat_weights_from_shore).
+    threat_scale_m: 40.0
 
     # Orbit radius when tracking a detection [m].
     orbit_radius_m: 50.0

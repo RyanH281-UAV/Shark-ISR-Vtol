@@ -16,9 +16,10 @@ Updates:
       centred on det_pos and renormalise.
 
 Coverage metric:
-  coverage_fraction = fraction of cells in the search area whose probability
-  has been reduced to ≤ p_detection × prior.  Equivalent to: cells the sensor
-  has been 'responsible for' given the detection probability.
+  coverage_fraction(revisit_bound_s) = fraction of cells whose age is within
+  the revisit bound — i.e. "fresh enough" for a persistent patrol.  This is
+  NOT cumulative ever-swept coverage: for a persistent search that number
+  pegs at 1.0 forever after the first full sweep and stops meaning anything.
 """
 
 import math
@@ -87,13 +88,10 @@ class BayesianSearchMap:
         for r, c in self._cells:
             self._log_p[r][c] = self._log_uniform
 
-        # Coverage tracker (ever swept) + per-cell staleness clock [s since
-        # last observed]. Age drives the hard revisit bound (see decay_observation
-        # / oldest_unobserved_cell_centre). Starts at 0 — nothing seen yet, and
-        # age only accrues once time advances via decay_observation().
-        self._swept: list[list[bool]] = [
-            [False] * self.n for _ in range(self.n)
-        ]
+        # Per-cell staleness clock [s since last observed]. Age drives the
+        # hard revisit bound (see decay_observation / oldest_unobserved_cell_centre)
+        # and the coverage_fraction freshness metric. Starts at 0 — nothing
+        # seen yet, and age only accrues once time advances via decay_observation().
         self._age: list[list[float]] = [
             [0.0] * self.n for _ in range(self.n)
         ]
@@ -139,7 +137,6 @@ class BayesianSearchMap:
             dist = math.sqrt((ce - pos_e) ** 2 + (cn - pos_n) ** 2)
             if dist <= footprint_radius_m:
                 self._log_p[r][c] += log_scale
-                self._swept[r][c] = True
                 self._age[r][c] = 0.0  # observed now → staleness reset
                 updated = True
         if updated:
@@ -221,22 +218,28 @@ class BayesianSearchMap:
         """Peak cell probability."""
         return max(self.probability(r, c) for r, c in self._cells)
 
-    def mean_probability(self) -> float:
-        """Mean cell probability (= 1 / n_cells for a uniform map)."""
-        n = len(self._cells)
-        return sum(self.probability(r, c) for r, c in self._cells) / max(1, n)
-
-    def coverage_fraction(self) -> float:
-        """Fraction of cells in the search area that have been swept."""
+    def coverage_fraction(self, revisit_bound_s: float) -> float:
+        """Fraction of cells whose age is within the revisit bound (fresh
+        enough), NOT the fraction ever swept — that number only ever rises
+        and pegs at 1.0 forever after the first full sweep, which says
+        nothing about a persistent patrol's actual freshness."""
         if not self._cells:
             return 0.0
-        swept = sum(1 for r, c in self._cells if self._swept[r][c])
-        return swept / len(self._cells)
+        fresh = sum(1 for r, c in self._cells if self._age[r][c] <= revisit_bound_s)
+        return fresh / len(self._cells)
 
     def highest_probability_cell_centre(self) -> tuple[float, float]:
         """ENU (e, n) of the cell with the highest probability."""
         best_r, best_c = max(self._cells, key=lambda rc: self._log_p[rc[0]][rc[1]])
         return self._cell_centre(best_r, best_c)
+
+    def cells(self) -> list[tuple[int, int]]:
+        """All (row, col) cells inside the search area."""
+        return list(self._cells)
+
+    def cell_centre(self, row: int, col: int) -> tuple[float, float]:
+        """Public ENU (e, n) centre of cell[row, col]."""
+        return self._cell_centre(row, col)
 
     # ── Staleness (hard revisit bound) ─────────────────────────────────────────
 

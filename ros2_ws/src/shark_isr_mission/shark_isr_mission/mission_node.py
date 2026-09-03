@@ -41,6 +41,18 @@ class MissionPhase(IntEnum):
     LANDED = 7
 
 
+# Guidance owns TRANSIT/SEARCH/TRACK; the mission only observes those phase
+# changes (SetGuidanceMode is what commands them). Used by _cb_search_state to
+# mirror guidance's phase without also matching STARTING/PAUSED/RETURNING/IDLE,
+# which the mission itself owns and must not be knocked out of by a stray
+# SearchState message.
+_GUIDANCE_PHASE_MAP = {
+    SearchState.PHASE_TRANSIT: MissionPhase.TRANSITING,
+    SearchState.PHASE_SEARCH: MissionPhase.SEARCHING,
+    SearchState.PHASE_TRACK: MissionPhase.TRACKING,
+}
+
+
 class MissionNode(Node):
     """Coordinates AutopilotCommand and SetGuidanceMode to run the ISR mission."""
 
@@ -53,11 +65,21 @@ class MissionNode(Node):
         self.declare_parameter('arm_timeout_s', 10.0)
         self.declare_parameter('transit_timeout_s', 300.0)
         self.declare_parameter('track_timeout_s', 120.0)
+        # Search area preset (ADR-012/ADR-015/ADR-018): a beachfront swim zone
+        # is a strip, not a circle. Applied only when CMD_START doesn't select
+        # a strip itself (search_length_m <= 0) — default 0 keeps every
+        # existing caller (including the SITL tests) on the circular area.
+        self.declare_parameter('search_length_m', 0.0)
+        self.declare_parameter('search_width_m', 120.0)
+        self.declare_parameter('shore_bearing_rad', 0.0)
 
         self._low_batt_thresh = self.get_parameter('low_battery_threshold').value
         self._arm_timeout = self.get_parameter('arm_timeout_s').value
         self._transit_timeout = self.get_parameter('transit_timeout_s').value
         self._track_timeout = self.get_parameter('track_timeout_s').value
+        self._default_search_length = self.get_parameter('search_length_m').value
+        self._default_search_width = self.get_parameter('search_width_m').value
+        self._default_shore_bearing = self.get_parameter('shore_bearing_rad').value
 
         self.add_on_set_parameters_callback(self._on_params_change)
 
@@ -74,6 +96,9 @@ class MissionNode(Node):
         self._transit_alt: float = 50.0
         self._search_alt: float = 50.0
         self._orbit_radius: float = 50.0
+        self._search_length: float = 0.0    # 0 = circle; ADR-012/ADR-018 strip
+        self._search_width: float = 0.0
+        self._shore_bearing: float = 0.0
 
         # Phase timing
         self._phase_start: float = 0.0
@@ -115,14 +140,16 @@ class MissionNode(Node):
     def _cb_search_state(self, msg: SearchState) -> None:
         self._search_state = msg
         # Guidance-driven phase transitions (mission observes, doesn't command).
-        if self._phase == MissionPhase.SEARCHING:
-            if msg.phase == SearchState.PHASE_TRACK:
-                self._set_phase(MissionPhase.TRACKING)
-                self.get_logger().info('SearchState TRACK detected → TRACKING')
-        elif self._phase == MissionPhase.TRACKING:
-            if msg.phase == SearchState.PHASE_SEARCH:
-                self._set_phase(MissionPhase.SEARCHING)
-                self.get_logger().info('SearchState back to SEARCH → SEARCHING')
+        # Only mirror while the mission is itself in a guidance-owned phase —
+        # this used to have separate SEARCHING/TRACKING branches and no
+        # TRANSITING one, so the mission sat in TRANSITING for up to
+        # transit_timeout_s after guidance had already reached SEARCH.
+        if self._phase not in _GUIDANCE_PHASE_MAP.values():
+            return
+        target = _GUIDANCE_PHASE_MAP.get(msg.phase)
+        if target is not None and target != self._phase:
+            self._set_phase(target)
+            self.get_logger().info(f'SearchState phase {msg.phase} → {target.name}')
 
     # ── 2 Hz monitor: failsafes + timeout transitions ────────────────────────
 
@@ -206,6 +233,16 @@ class MissionNode(Node):
             self._transit_alt = request.transit_alt_amsl_m or 30.0
             self._search_alt = request.search_alt_amsl_m or 30.0
             self._orbit_radius = request.orbit_radius_m or self._orbit_radius
+            # Strip area: only when the request itself asks for one, else the
+            # node's configured preset (which defaults to 0 = circle).
+            if request.search_length_m > 0:
+                self._search_length = request.search_length_m
+                self._search_width = request.search_width_m or self._default_search_width
+                self._shore_bearing = request.shore_bearing_rad
+            else:
+                self._search_length = self._default_search_length
+                self._search_width = self._default_search_width
+                self._shore_bearing = self._default_shore_bearing
             self._low_battery_triggered = False
             if not self._start_mission():
                 response.accepted = False
@@ -309,6 +346,13 @@ class MissionNode(Node):
         # Flat-earth ENU offset from home (guidance does the same conversion).
         te, tn = self._latlondelta_to_enu(self._search_lat, self._search_lon)
         req.transit_target_enu_m = Point(x=te, y=tn, z=self._transit_alt)
+        # Seed the eventual search area — guidance self-transitions to SEARCH
+        # on arrival and needs these before MODE_SEARCH is ever called.
+        req.search_radius_m = self._search_radius
+        req.search_alt_enu_z_m = self._search_alt
+        req.search_length_m = self._search_length
+        req.search_width_m = self._search_width
+        req.shore_bearing_rad = self._shore_bearing
         future = self._cli_gd.call_async(req)
         future.add_done_callback(self._on_transit_response)
 
@@ -331,6 +375,9 @@ class MissionNode(Node):
         req.search_centre_enu_m = Point(x=te, y=tn, z=0.0)
         req.search_radius_m = self._search_radius
         req.search_alt_enu_z_m = self._search_alt
+        req.search_length_m = self._search_length
+        req.search_width_m = self._search_width
+        req.shore_bearing_rad = self._shore_bearing
         future = self._cli_gd.call_async(req)
         future.add_done_callback(
             lambda f: self.get_logger().info(

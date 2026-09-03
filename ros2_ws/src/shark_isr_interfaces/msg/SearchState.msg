@@ -19,9 +19,16 @@ uint8 PHASE_RETURN  = 4
 uint8 phase
 
 # ── Search coverage metrics ───────────────────────────────────────────────────
-float32 coverage_fraction       # [0.0, 1.0] fraction of search area observed
+# coverage_fraction: fraction of cells within the hard revisit bound (fresh
+# enough), NOT cumulative ever-swept coverage — that number only ever rises
+# and pegs at 1.0 forever after the first full sweep (ADR-018).
+float32 coverage_fraction       # [0.0, 1.0] fraction of search area "fresh"
 float32 map_max_probability     # [0.0, 1.0] peak cell probability (Bayesian map)
-float32 map_mean_probability    # [0.0, 1.0] mean cell probability
+# ADR-018: replaces map_mean_probability, which was mathematically constant
+# (always 1/n_cells — the mean of any distribution over n cells that sums to
+# 1) and therefore carried no information. This is the number that actually
+# reflects the hard revisit bound, the project's stated differentiator.
+float32 max_cell_age_s          # [s] staleness of the stalest cell in the map
 
 # ── Time tracking ─────────────────────────────────────────────────────────────
 float32 time_on_station_s       # [s] elapsed in SEARCH or TRACK phase

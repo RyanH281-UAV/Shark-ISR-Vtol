@@ -226,9 +226,15 @@ Format per entry: context, decision, rationale, status.
   bound is the differentiator for beach ISR: it guarantees worst-case freshness, not just
   expected freshness. The strip region reflects real beach geometry.
 - **Status:** Implemented + unit-tested (2026-06-18). **Wired into `guidance_node` 2026-07-13**
-  behind the `search_strategy` param (default `persistent_patrol`; `lawnmower` keeps the
-  T10-verified fixed-path baseline). `decay_observation` (probability re-growth) now runs every
-  search tick. SITL re-run of T10 with the patrol strategy pending.
+  behind the `search_strategy` param (default `persistent_patrol`). `decay_observation`
+  (probability re-growth) runs every search tick. **Superseded in part by ADR-018 (2026-09-03):**
+  the strip region and threat weighting described here were unit-tested but not actually reachable
+  from `guidance_node` until ADR-018 connected them (`SearchRegion` was fabricated as a bounding
+  square for every real search); `BarrierStrategy` was removed (never implemented, config-reachable
+  crash); the separate `LawnmowerStrategy`/fixed-path split collapsed into one belief-driven code
+  path for all three strategies. `check_feasibility` is still unwired — see ADR-018. T10/T11
+  SITL-verified against the collapsed strategy layer and the interface unfreeze; not yet against a
+  real (non-circular) strip area.
 
 ---
 
@@ -398,6 +404,88 @@ Format per entry: context, decision, rationale, status.
   --list-cameras` → imx708). **B07b container gates partially passed**: `docker build`, in-container
   `colcon build`, and in-container HailoRT device access all work; `ros2 topic hz /camera/image_raw`
   at `camera_fps` is **still open**. See `HARDWARE_BRINGUP.md` B07 and `docs/logs/bringup_log.md`.
+
+---
+
+### ADR-018 — Search stack audit: wire the strip/threat-weighting that ADR-012 shipped disconnected, fix two transition defects
+
+- **Context:** An audit of the search/detection/track-transition path (2026-09-03) found that
+  ADR-012's strip region, threat weighting, and feasibility check were written and unit-tested but
+  never reachable from `guidance_node` — it still ran the pre-ADR-012 circular search, with
+  `SearchRegion` fabricated as a 2r×2r square (bearing 0) purely so `region.alt_u` had somewhere to
+  live. Consequently `persistent_patrol`'s nominal routing was behaviourally identical to
+  `bayesian_greedy` (threat_weights was always `None`), `map_mean_probability` was mathematically
+  constant (mean of any distribution over n cells summing to 1 is always 1/n — verified numerically
+  across sweep/detection/decay), and `coverage_fraction` pegged at 1.0 forever after the first full
+  sweep, while `max_cell_age_s` — the number that actually measures the hard revisit bound — was
+  computed but never published.
+  Two defects were also found and are fixed by the same change, not called out separately in the
+  audit because they only became visible while tracing the exact code this ADR touches:
+  1. **Belief-map wipe on resume.** `mission_node`'s track/transit timeout calls `MODE_SEARCH` to
+     *resume* search; `guidance_node._start_search` unconditionally rebuilt the Bayesian map and
+     reset the gate on every call, discarding accumulated belief and causing a TRACK/SEARCH
+     oscillation on a stationary target (gate re-triggered ~3 s after every forced resume).
+  2. **Mission never left TRANSITING.** `mission_node._cb_search_state` had branches for
+     SEARCHING→TRACKING and TRACKING→SEARCHING but none for TRANSITING→SEARCHING, so the mission
+     sat in TRANSITING for up to `transit_timeout_s` after guidance had already reached SEARCH.
+  3. **Transit→search handoff used stale defaults.** `_update_transit`'s on-arrival call to
+     `_start_search` read `self._search_centre/_radius/_alt`, which were only ever set by a prior
+     `MODE_SEARCH` call — never by `MODE_TRANSIT`. A mission's first-ever transit therefore searched
+     at guidance's `__init__` defaults (home, r=200, alt=50), not the operator's `CMD_START` values.
+     Masked in SITL because T10's search centre coincides with SITL home (radius/altitude were
+     silently wrong regardless: 100 m/30 m requested vs 200/50 used).
+- **Decision:**
+  - `SetGuidanceMode.srv` and `MissionCommand.srv` gain `search_length_m`, `search_width_m`,
+    `shore_bearing_rad` (additive — `search_length_m <= 0` keeps the existing circular area, so
+    every existing caller, including the SITL tests, is unchanged). This is an **unfreeze** of the
+    ADR-009 interface set.
+  - `guidance_node._start_search` builds a real `SearchRegion`/`BayesianSearchMap(region=...)` when
+    a strip is supplied, and skips rebuilding the map/strategy/gate/candidate when the requested
+    area is unchanged from what's already configured (fixes defect 1). `MODE_TRANSIT` now seeds
+    the eventual search area itself (fixes defect 3).
+  - `mission_node._cb_search_state` mirrors guidance's phase via a single `SearchState.phase →
+    MissionPhase` map applied only while the mission is in a guidance-owned phase
+    (TRANSITING/SEARCHING/TRACKING), instead of two hand-written branches (fixes defect 2).
+  - `strategies.threat_weights_from_shore(region, bayes_map, scale_m)`: exponential falloff from
+    the shore edge (`region.cross_shore_offset`), computed once per `_start_search` call, only for
+    `persistent_patrol` over a real strip (the circular area's region is still fabricated and has
+    no shoreline to weight against). Marked `# ponytail:` — a naive prior, replace with a
+    fitted/sightings-driven weight when real data exists.
+  - `SearchState.msg`: `map_mean_probability` (constant, see above) replaced with `max_cell_age_s`
+    (same wire size). `BayesianSearchMap.coverage_fraction` now takes `revisit_bound_s` and reports
+    the fraction of cells within the revisit bound, not the fraction ever swept — it can fall as
+    well as rise, which is the entire point of a persistent-patrol coverage metric. `mean_probability()`
+    and the `_swept` tracker (now dead) are deleted.
+  - The now-redundant legacy circular `boustrophedon()`/`coverage_fraction_swept()` and the
+    node's separate fixed-waypoint-list fallback are deleted — `lawnmower` now goes through
+    `LawnmowerStrategy`/`boustrophedon_strip` for both the strip and (bounding-square) circular
+    case, same as the other two strategies. `n_ahead` and the unused `SearchStrategy` Protocol are
+    dropped. `BarrierStrategy` — a `NotImplementedError` that passed the `search_strategy` startup
+    validator and only crashed once the 5 Hz timer called it — is removed; re-add when the
+    beach-mouth interception scenario is real.
+  - `shark_isr_perception`: `detector_node` now subscribes to `/camera/camera_info` instead of
+    declaring its own third copy of `fx/fy/cx/cy/image_width/image_height` (both camera nodes
+    already published the topic; nothing had a subscriber). `_build_camera_info` — byte-identical
+    in both camera nodes — moved to a shared `camera_info.py` helper. Known, accepted trade-off: a
+    ~1-frame startup window before the first `CameraInfo` arrives, during which a real detection
+    would be (correctly, not silently) marked `geo_valid=False` — the same bounded cold-start
+    class of gap that already existed for a missing `vehicle_state`.
+  - `check_feasibility` (ADR-012's pre-flight loop-time gate) remains written and tested but is
+    **still not wired in** — deferred, not part of this pass; `search_pattern.py` and this ADR are
+    where to pick it up.
+- **Rationale:** Finish what ADR-012 started rather than delete it — the strip geometry
+  (`local_to_world`/`world_to_local`/`contains`/`cross_shore_offset`/`boustrophedon_strip`) was
+  already correct and fully tested, just never connected. Deleting the dead circular-pattern
+  duplicate and the two unused knobs (`n_ahead`, the Protocol) is the size reduction that connecting
+  the strip enables, not a separate simplification pass.
+- **Status:** Implemented and unit-tested 2026-09-03 (`test_bayesian_map.py`, `test_strategies.py`,
+  new `test_guidance_node.py` and `test_mission_node.py` covering the resume-guard and phase-mirror
+  fixes specifically). **SITL-verified 2026-09-03**: T10 (confidence gate both halves, full
+  IDLE→SEARCH→TRACK→RETURN cycle) and T11 (perception pipeline → TRACK, `geo_valid=True` via the
+  new `CameraInfo` subscription) both pass on a clean single-instance stack. Strip/threat-weighting
+  exercised by unit tests only — no SITL scenario yet drives a real (non-circular) search area; T10
+  and T11 both use the default circular area, so this ADR's interface unfreeze and defect fixes are
+  SITL-verified, but the strip geometry itself is not yet flown even in simulation.
 
 ---
 

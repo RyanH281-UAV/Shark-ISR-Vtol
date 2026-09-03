@@ -26,7 +26,7 @@ wired into guidance (2026-07-13) and now need a **T10/T11 re-run** before they c
 | # | Capability | State | Critical gaps |
 |---|---|---|---|
 | 1 | **Mission control** — full state machine, ARM→OFFBOARD→TRANSIT chain PX4-confirmed, pause/resume | ✅ (T08/T09/T10) | `mission_node` still has zero unit tests (state matrix, CMD_START guard). |
-| 2 | **Search** — persistent patrol / greedy / lawnmower strategies over Bayesian map, re-growth, hard revisit bound | 🔶 | Wired 2026-07-13; **T10 re-run with `persistent_patrol` pending.** `BarrierStrategy` still an explicit stub. Strip `SearchRegion` used for alt only — mission still commands a circle. |
+| 2 | **Search** — persistent patrol / greedy / lawnmower strategies over Bayesian map, re-growth, hard revisit bound | 🔶 | Wired 2026-07-13; ADR-018 (2026-09-03) connected the strip region + threat weighting, fixed the belief-map-wipe-on-resume and mission-stuck-in-TRANSITING defects, removed `BarrierStrategy`. T10/T11 SITL-verified against the collapsed strategy layer; strip area itself not yet flown even in SITL (mission still commands a circle by default). `check_feasibility` still unwired. |
 | 3 | **Detection gating** — confidence accumulates/decays; sustained τ crossing transitions; lost-target reverts to SEARCH | 🔶 | Wired 2026-07-13 (ADR-016), unit-tested; **T10/T11 re-run pending.** |
 | 4 | **Perception** — HailoRT lifecycle, letterboxed ingest, geolocation, sim burst mode | 🟡 | `_hailo_forward` output parser is still a placeholder — adapt to the real `.hef` tensor layout on the bench (B08). `shark_detector.hef` compiled but not deployed (`hef_path` empty). No picamera2 camera node yet. |
 | 5 | **Autopilot bridge** — uXRCE-DDS, offboard orbit synthesis, unified VehicleState, force-arm now gated behind `sitl_force_arm` | ✅ (T06/T07) | MAVLink fallback is a documented option, not code (nothing needs it — QGC talks MAVLink to the Pixhawk directly). |
@@ -54,6 +54,7 @@ wired into guidance (2026-07-13) and now need a **T10/T11 re-run** before they c
 
 - Full custom GCS (ADR-015: QGC + thin detection view only).
 - MAVLink companion fallback (documented option; zero current need).
-- BarrierStrategy (stub until a beach-mouth interception scenario is real).
+- BarrierStrategy (removed 2026-09-03, ADR-018 — was a stub reachable from config; re-add when a
+  beach-mouth interception scenario is real).
 - SCAN as a separate mission phase — the gate models "look harder before committing" inside
   SEARCH; a distinct phase would change the frozen interface for no behavioural gain.

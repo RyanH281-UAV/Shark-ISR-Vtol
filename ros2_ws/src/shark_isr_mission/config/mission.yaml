@@ -17,3 +17,12 @@ mission_node:
     # Guidance's own confidence gate usually returns earlier (target lost);
     # this is the mission-level backstop.
     track_timeout_s: 120.0
+
+    # ── Search area preset (ADR-012/ADR-015/ADR-018) ─────────────────────────
+    # A beachfront swim zone is a strip, not a circle. Applied only when
+    # CMD_START itself doesn't select a strip (search_length_m <= 0) — the
+    # default 0.0 here keeps the circular area (search_radius_m in the
+    # CMD_START request), unchanged from before ADR-018.
+    search_length_m: 0.0     # [m] along-shore extent; 0 = circle
+    search_width_m: 120.0    # [m] cross-shore extent
+    shore_bearing_rad: 0.0   # [rad] ENU bearing of the shoreline (REP-103)

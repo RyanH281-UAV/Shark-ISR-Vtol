@@ -25,14 +25,16 @@ Small drones can already fly search patterns. The gap this project targets is th
 The swim zone is covered by a belief-weighted persistent patrol with a hard revisit bound, so no
 water goes stale. Probability re-grows as a target could move in, so guidance returns instead of
 chasing one greedy peak. Coverage, not a one-shot find. Implemented and unit-tested (ADR-012);
-the SITL campaign verified the boustrophedon coverage baseline (T10) — the patrol strategy's own
-SITL re-run is the next gate.
+SITL-verified with the patrol strategy as the default (T10, 2026-09-03). *Honest status: the
+shoreline-strip search area and threat weighting are wired and unit-tested (ADR-018) but every
+SITL run so far uses a circular area — the strip itself has not been flown, even in sim.*
 
 **02 — Confidence-gated transition**
 Detections accumulate confidence across frames and decay on misses. Only a sustained crossing of
 threshold τ triggers the autonomous SEARCH → TRACK transition and orbit-on-detect. One lucky frame
-never flies the aircraft. Implemented in guidance (ADR-016) and unit-tested; T11 verified the
-detection→TRACK chain single-shot — re-run with the gate is the next SITL check.
+never flies the aircraft. Implemented in guidance (ADR-016), unit-tested, and SITL-verified in
+both directions (T10: a 5-frame burst does not transition, a 30-frame stream does; T11: the real
+mock-detector chain drives the transition with no test-side injection — 2026-09-03).
 
 **03 — Onboard, link-independent**
 The detector (YOLOv8n compiled to a Hailo `.hef`) is built to run on a 13-TOPS NPU on the
@@ -164,9 +166,9 @@ rather than a microSD — the original cards turned out to be counterfeit (see
 | 7 | Telemetry — JSONL logs, GCS relay | 🔶 Code complete; SITL rehearsal pending |
 | 8 | Hardware bring-up, mass/power budget, flight test | ⬜ Planned (post-budget) |
 
-All seven packages build green (`colcon` 8/8 on ROS 2 Humble). **76/76 unit tests pass**
-(10 autopilot · 54 guidance · 12 perception). `mission_node` and `telemetry_node` have no unit
-tests — they are covered only by the SITL campaign.
+All seven packages build green (`colcon` 8/8 on ROS 2 Humble). **80/80 unit tests pass**
+(10 autopilot · 50 guidance · 12 perception · 8 mission). `telemetry_node` has no unit tests —
+it is covered only by the SITL campaign.
 A full-stack code review (ADR-011) caught and fixed 2 safety-critical + 6 high-severity bugs
 before any sim run — validating the SITL-first rule.
 
@@ -177,9 +179,9 @@ before any sim run — validating the SITL-first rule.
 SITL runs the real ROS 2 nodes against a simulated PX4 autopilot and Gazebo Harmonic world.
 It is the project's release gate: **no code reaches the aircraft until it has passed in SITL.**
 T01–T05 (DDS bridge, arming, takeoff, loiter) passed in a prior campaign. T06–T11 cover the full
-mission stack. *2026-07-13: the confidence gate (ADR-016) and persistent-patrol strategy (ADR-012)
-are now wired into guidance — T10/T11 re-run with the new behaviours is the next SITL gate before
-those two claims count as sim-verified.*
+mission stack. *2026-09-03: T10 and T11 re-run against the confidence gate (ADR-016) and the
+persistent-patrol default (ADR-012/018) — both pass; console output is committed in
+`docs/sitl_runs/2026-09-03.md`. T06–T09 figures below are still from the earlier campaign.*
 
 | Test | Proves | Evidence |
 |---|---|---|
@@ -187,13 +189,12 @@ those two claims count as sim-verified.*
 | **T07** — Companion failsafe | If companion stops streaming, PX4 leaves Offboard on its own. What it does next is `COM_OBL_ACT` (unset in SITL → Position mode); RTL on hardware is gate B13 | Offboard loss → PX4 exits OFFBOARD in 5.1 s (COM_OF_LOSS_T) |
 | **T08** — Operator abort | Operator can abort; aircraft returns home under autopilot | CMD_ABORT drove PX4 to nav_state RTL |
 | **T09** — Low-battery failsafe | Low battery auto-triggers return before aircraft is stranded | Threshold crossing → mission RETURNING (tuneable live via ROS 2 param) |
-| **T10** — End-to-end mission | Full state machine runs start-to-finish without intervention | All 5 phases visited IDLE→TRANSIT→SEARCH→TRACK→RETURN in 7.0 s — **recorded against the pre-gate script; the current test floors at ~9 s, so this figure is stale** |
-| **T11** — Perception → TRACK | The real *node* chain makes the SEARCH→TRACK decision itself, with no test-side injection | mock_camera_node → detector_node (sim mode) → /detection → guidance TRACK in 3.2 s; ≥1 Detection confirmed. **No real camera or Hailo inference is in this loop.** |
+| **T10** — End-to-end mission | Full state machine runs start-to-finish without intervention; confidence gate holds on a 5-frame burst and fires on a 30-frame stream | IDLE→SEARCH→TRACK→RETURN in 14.6 s, gate held ✓ then fired ✓ (2026-09-03, `docs/sitl_runs/`). TRANSIT is not observed at the 2 Hz state rate because the search centre is SITL home — arrival is immediate |
+| **T11** — Perception → TRACK | The real *node* chain makes the SEARCH→TRACK decision itself, with no test-side injection | mock_camera_node → detector_node (sim mode) → /detection → guidance TRACK in 6.4 s; 45 detections received, `geo_valid=True` via the `/camera/camera_info` intrinsics path (2026-09-03, `docs/sitl_runs/`). **No real camera or Hailo inference is in this loop.** |
 
-> **Evidence provenance.** These figures are transcribed from console output that was not saved.
-> `docs/SITL_PROCEDURE.md` specifies `docs/sitl_runs/YYYY-MM-DD.md` for per-session records; that
-> directory does not exist yet. Until the runs are re-executed and their output committed, treat
-> this table as claims rather than evidence.
+> **Evidence provenance.** T10 and T11 figures are from console output committed in
+> `docs/sitl_runs/2026-09-03.md`. T06–T09 figures are transcribed from console output that was
+> not saved — treat those four as claims until they are re-run and committed the same way.
 
 ```bash
 ./sim/tests/run_tests.sh          # PX4 SITL + Gazebo Harmonic + ROS 2 Humble
@@ -216,7 +217,8 @@ those two claims count as sim-verified.*
 | `sim/tests/` | SITL test suite (T01–T11); run via `run_tests.sh` |
 | `training/` | YOLOv8n pipeline — download → merge → train → ONNX → Hailo `.hef` |
 | `training/runs/detect/` | Training artifacts: curves, confusion matrix, detection previews |
-| `docs/` | Architecture, decisions (ADR-001–017), build plan, platform reference |
+| `docs/` | Architecture, decisions (ADR-001–018), build plan, platform reference |
+| `docs/sitl_runs/` | Committed SITL console output, one file per session |
 
 ---
 

@@ -4,8 +4,8 @@ strategies.py — pluggable search strategies (ADR-012).
 Pure math, no ROS deps. Unit-tested in test/test_strategies.py.
 
 One interface, several behaviours, so the shark mission can ship persistent
-patrol while keeping lawnmower / Bayesian-greedy / barrier available for other
-domains (the strategy is a config choice, not a rewrite):
+patrol while keeping lawnmower / Bayesian-greedy available for other domains
+(the strategy is a config choice, not a rewrite):
 
     LawnmowerStrategy       — complete coverage, ignores probability (the floor).
     BayesianGreedyStrategy  — chase the highest-probability cell (SAR / first-find).
@@ -13,31 +13,17 @@ domains (the strategy is a config choice, not a rewrite):
                                HARD revisit bound: if any cell's age exceeds T,
                                force-visit the stalest cell; else go to the
                                highest threat-weighted-probability cell.
-    BarrierStrategy         — intercept along a line (IAMSAR barrier). Stub.
+
+BarrierStrategy (IAMSAR barrier line intercept) was removed 2026-09-03 — it was
+a NotImplementedError reachable from config (search_strategy: barrier passed
+startup validation and only crashed once the 5 Hz timer called it). Re-add when
+the beach-mouth interception scenario is real; see ADR-012.
 """
 
-from typing import Protocol
+import math
 
 from .bayesian_map import BayesianSearchMap
 from .search_pattern import SearchRegion, Waypoint, boustrophedon_strip
-
-
-class SearchStrategy(Protocol):
-    """A search strategy maps (region, belief, vehicle state) → next waypoint(s)."""
-
-    def next_waypoints(
-        self,
-        region: SearchRegion,
-        bayes_map: BayesianSearchMap,
-        vehicle_pos: tuple[float, float],
-        threat_weights: dict[tuple[int, int], float] | None = None,
-        revisit_bound_s: float = 300.0,
-        n_ahead: int = 1,
-    ) -> list[Waypoint]:
-        """``n_ahead`` is a hint, not a guarantee. Belief-driven strategies
-        (greedy, patrol) recompute from the live map and return a single
-        waypoint regardless; only fixed-path strategies (lawnmower) honour it."""
-        ...
 
 
 class LawnmowerStrategy:
@@ -68,14 +54,11 @@ class LawnmowerStrategy:
         vehicle_pos: tuple[float, float],
         threat_weights: dict[tuple[int, int], float] | None = None,
         revisit_bound_s: float = 300.0,
-        n_ahead: int = 1,
     ) -> list[Waypoint]:
         self._ensure_path(region)
-        out: list[Waypoint] = []
-        for _ in range(max(1, n_ahead)):
-            out.append(self._path[self._idx % len(self._path)])
-            self._idx += 1
-        return out
+        wp = self._path[self._idx % len(self._path)]
+        self._idx += 1
+        return [wp]
 
 
 class BayesianGreedyStrategy:
@@ -90,7 +73,6 @@ class BayesianGreedyStrategy:
         vehicle_pos: tuple[float, float],
         threat_weights: dict[tuple[int, int], float] | None = None,
         revisit_bound_s: float = 300.0,
-        n_ahead: int = 1,
     ) -> list[Waypoint]:
         e, n = bayes_map.highest_probability_cell_centre()
         return [Waypoint(e, n, region.alt_u)]
@@ -114,7 +96,6 @@ class PersistentPatrolStrategy:
         vehicle_pos: tuple[float, float],
         threat_weights: dict[tuple[int, int], float] | None = None,
         revisit_bound_s: float = 300.0,
-        n_ahead: int = 1,
     ) -> list[Waypoint]:
         if bayes_map.max_cell_age_s() > revisit_bound_s:
             e, n = bayes_map.oldest_unobserved_cell_centre()  # force-visit
@@ -123,25 +104,31 @@ class PersistentPatrolStrategy:
         return [Waypoint(e, n, region.alt_u)]
 
 
-class BarrierStrategy:
-    """IAMSAR barrier search — hold a line across the swim-zone mouth to intercept
-    inbound targets. Stub: implement when the beach-mouth scenario is in scope."""
-
-    def next_waypoints(
-        self,
-        region: SearchRegion,
-        bayes_map: BayesianSearchMap,
-        vehicle_pos: tuple[float, float],
-        threat_weights: dict[tuple[int, int], float] | None = None,
-        revisit_bound_s: float = 300.0,
-        n_ahead: int = 1,
-    ) -> list[Waypoint]:
-        raise NotImplementedError('BarrierStrategy not implemented — add when beach-mouth interception is confirmed')
-
-
 STRATEGIES = {
     'lawnmower': LawnmowerStrategy,
     'bayesian_greedy': BayesianGreedyStrategy,
     'persistent_patrol': PersistentPatrolStrategy,
-    'barrier': BarrierStrategy,
 }
+
+
+def threat_weights_from_shore(
+    region: SearchRegion,
+    bayes_map: BayesianSearchMap,
+    scale_m: float,
+) -> dict[tuple[int, int], float]:
+    """Per-cell threat weight for PersistentPatrolStrategy: exponential
+    falloff offshore from the shore edge (``region.cross_shore_offset`` is 0
+    at the shore edge, increasing offshore), so nearshore cells — the swim
+    zone — score highest, matching ADR-012's "small offset = higher threat".
+
+    Only meaningful for a real (bearing-aligned) strip region — the legacy
+    circular search area has no shoreline to weight against.
+
+    # ponytail: exponential falloff from the shore edge is a naive threat
+    # prior — replace with a fitted/sightings-driven weight when real data
+    # (e.g. historical sighting density) exists.
+    """
+    return {
+        rc: math.exp(-max(0.0, region.cross_shore_offset(*bayes_map.cell_centre(*rc))) / scale_m)
+        for rc in bayes_map.cells()
+    }

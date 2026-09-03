@@ -14,7 +14,12 @@ OpenCV, converts BGR→`rgb8`, and republishes. No libcamera inside the containe
 `docker/README.md`. Launched by `perception.launch.py` when `use_sim:=false`.
 
 ### `detector_node`
-Subscribes to `/camera/image_raw` and `/vehicle_state`.  
+Subscribes to `/camera/image_raw`, `/camera/camera_info`, and `/vehicle_state`. Intrinsics
+(fx/fy/cx/cy/width/height) come from `/camera/camera_info`, not its own params (ADR-018) —
+both camera nodes already published it and nothing was reading it, so there were three
+independent copies with nothing enforcing agreement. `None` until the first `CameraInfo`
+arrives, so a detection in the ~1-frame startup window is (correctly, not silently) marked
+`geo_valid=False`.  
 In **sim mode** (`use_sim:=true`): publishes probabilistic mock `Detection` messages to exercise the full pipeline.  
 In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and runs the forward pass on each frame.
 **Not yet functional.** The output decoder is unwritten — `_hailo_forward` carries a placeholder parser (no DFL decode, no NMS) that does not match this model's two output layers, and `hef_path` is empty by default. Real mode produces no detections until bench gate B08.
@@ -24,6 +29,7 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 | Direction | Topic | Type |
 |---|---|---|
 | Subscribes | `/camera/image_raw` | `sensor_msgs/Image` |
+| Subscribes | `/camera/camera_info` | `sensor_msgs/CameraInfo` (detector_node — intrinsics, ADR-018) |
 | Subscribes | `/vehicle_state` | `shark_isr_interfaces/VehicleState` |
 | Publishes  | `/detection` | `shark_isr_interfaces/Detection` |
 | Publishes  | `/camera/image_raw` | `sensor_msgs/Image` (`mock_camera_node` sim / `camera_node` hardware) |
@@ -37,9 +43,9 @@ In **real mode** (`use_sim:=false`): loads a Hailo `.hef` model via HailoRT and 
 | `hef_path` | str | `""` | Path to `.hef` model on Pi 5 (real mode) |
 | `confidence_threshold` | float | `0.45` | Minimum score to publish Detection |
 | `mock_detection_prob` | float | `0.02` | Per-frame mock detection probability (sim) |
-| `image_width` | int | `640` | Camera image width [px] |
-| `image_height` | int | `480` | Camera image height [px] |
-| `fx`, `fy`, `cx`, `cy` | float | `616, 616, 320, 240` | Camera intrinsics [px] |
+| `image_width` | int | `640` | Camera image width [px] — read by the camera nodes only; `detector_node` gets it from `/camera/camera_info` (ADR-018) |
+| `image_height` | int | `480` | Camera image height [px] — same |
+| `fx`, `fy`, `cx`, `cy` | float | `616, 616, 320, 240` | Camera intrinsics [px] — same |
 | `camera_fps` | float | `10.0` | Camera frame rate (mock and real) |
 | `mock_images_dir` | str | `""` | Dir of test frames for mock camera (`""` = noise) |
 | `stream_url` | str | `udp://127.0.0.1:8554` | Real camera source for `camera_node` (host `rpicam-vid` stream) |

@@ -2,8 +2,10 @@
 detector_node.py — Camera ingest + Hailo-8L inference + geolocation.
 
 Subscribes:
-  /camera/image_raw   (sensor_msgs/Image)   — frames from picamera2 or mock_camera_node
-  /vehicle_state      (VehicleState)        — from shark_isr_autopilot
+  /camera/image_raw   (sensor_msgs/Image)      — frames from picamera2 or mock_camera_node
+  /camera/camera_info (sensor_msgs/CameraInfo) — intrinsics (ADR-018: single source of
+                                                  truth, not our own fx/fy/cx/cy copy)
+  /vehicle_state      (VehicleState)           — from shark_isr_autopilot
 
 Publishes:
   /detection          (Detection)           — geolocated shark detections
@@ -13,9 +15,6 @@ Parameters (all in config/perception.yaml):
   hef_path             str    — path to Hailo .hef model file (real mode only)
   confidence_threshold float  — minimum HailoRT score to publish [0..1]
   mock_detection_prob  float  — per-frame probability of mock detection in sim mode
-  image_width          int    — expected image width [px]
-  image_height         int    — expected image height [px]
-  fx, fy, cx, cy       float  — camera intrinsics [px]
 
 Sim mode
 --------
@@ -39,7 +38,7 @@ from typing import Optional
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import Header
 
 from shark_isr_interfaces.msg import Detection, VehicleState
@@ -60,32 +59,30 @@ class DetectorNode(Node):
         # gate (ADR-016) requires sustained evidence — a single mock frame
         # would (correctly) never transition.
         self.declare_parameter("mock_burst_frames", 30)
-        self.declare_parameter("image_width", 640)
-        self.declare_parameter("image_height", 480)
-        self.declare_parameter("fx", 616.0)
-        self.declare_parameter("fy", 616.0)
-        self.declare_parameter("cx", 320.0)
-        self.declare_parameter("cy", 240.0)
 
         self._use_sim: bool = self.get_parameter("use_sim").value
         self._conf_thresh: float = self.get_parameter("confidence_threshold").value
         self._mock_prob: float = self.get_parameter("mock_detection_prob").value
         self._mock_burst_frames: int = self.get_parameter("mock_burst_frames").value
         self._mock_burst_remaining: int = 0
-        self._img_w: int = self.get_parameter("image_width").value
-        self._img_h: int = self.get_parameter("image_height").value
-        self._fx: float = self.get_parameter("fx").value
-        self._fy: float = self.get_parameter("fy").value
-        self._cx: float = self.get_parameter("cx").value
-        self._cy: float = self.get_parameter("cy").value
 
         self._vehicle_state: Optional[VehicleState] = None
+        # Intrinsics (ADR-018): read from CameraInfo, not our own params — both
+        # camera_node and mock_camera_node already publish it, so this was the
+        # third independent copy of fx/fy/cx/cy/width/height with nothing
+        # enforcing agreement. None until the first CameraInfo arrives, which
+        # means any detection in the ~1 camera-frame startup window is (not
+        # silently) marked geo_valid=False by the info-is-None guard below —
+        # the same bounded cold-start gap that already existed for a missing
+        # vehicle_state, just with one more topic that has to arrive first.
+        self._camera_info: Optional[CameraInfo] = None
         self._hailo_infer = None  # set in _init_hailo()
 
         self._det_pub = self.create_publisher(Detection, "detection", 10)
 
         self.create_subscription(Image, "camera/image_raw", self._image_cb, 10)
         self.create_subscription(VehicleState, "vehicle_state", self._state_cb, 10)
+        self.create_subscription(CameraInfo, "camera/camera_info", self._camera_info_cb, 10)
 
         if not self._use_sim:
             self._init_hailo()
@@ -97,6 +94,9 @@ class DetectorNode(Node):
 
     def _state_cb(self, msg: VehicleState) -> None:
         self._vehicle_state = msg
+
+    def _camera_info_cb(self, msg: CameraInfo) -> None:
+        self._camera_info = msg
 
     def _image_cb(self, msg: Image) -> None:
         if self._use_sim:
@@ -123,6 +123,10 @@ class DetectorNode(Node):
         det.header.stamp = stamp
         det.header.frame_id = "camera_optical"
         det.object_class = Detection.CLASS_SHARK
+        # Hardcoded above guidance's detection_confidence_threshold (0.70,
+        # shark_isr_guidance/config/guidance.yaml) by a fixed 0.05 margin —
+        # a silent cross-package coupling. Raising that threshold above 0.75
+        # makes every sim detection silently invisible to guidance.
         det.confidence = 0.75
 
         jitter = 0.05
@@ -167,6 +171,11 @@ class DetectorNode(Node):
             )
             network_groups = target.configure(hef, configure_params)
             network_group = network_groups[0]
+            # BUG (B08 bench item, not fixed here — needs real HailoRT to
+            # verify): stored but never used. HailoRT requires
+            # `with network_group.activate(network_group_params):` around the
+            # InferVStreams call in _hailo_forward; without it, inference below
+            # is expected to fail once a real .hef is loaded.
             network_group_params = network_group.create_params()
 
             input_params = InputVStreamParams.make(
@@ -182,7 +191,6 @@ class DetectorNode(Node):
             self._hailo_input_params = input_params
             self._hailo_output_params = output_params
             self._hailo_infer = InferVStreams
-            self._HEF = HEF
             self.get_logger().info(f"Hailo .hef loaded: {hef_path}")
         except Exception as exc:
             self.get_logger().error(f"Failed to initialise HailoRT: {exc}")
@@ -288,16 +296,21 @@ class DetectorNode(Node):
     # ------------------------------------------------------------------ #
     # Geolocation
 
+    @staticmethod
+    def _mark_geo_invalid(det: Detection) -> None:
+        det.geo_valid = False
+        det.latitude_deg = 0.0
+        det.longitude_deg = 0.0
+        det.altitude_amsl_m = 0.0
+        det.position_std_m = 0.0
+
     def _fill_geolocation(
         self, det: Detection, bbox_cx_norm: float, bbox_cy_norm: float
     ) -> None:
         vs = self._vehicle_state
-        if vs is None or not vs.agl_valid or vs.agl_m <= 0.0:
-            det.geo_valid = False
-            det.latitude_deg = 0.0
-            det.longitude_deg = 0.0
-            det.altitude_amsl_m = 0.0
-            det.position_std_m = 0.0
+        info = self._camera_info
+        if vs is None or not vs.agl_valid or vs.agl_m <= 0.0 or info is None:
+            self._mark_geo_invalid(det)
             return
 
         # geolocate() requires NORMALISED bbox centre [0,1] (Detection.msg contract).
@@ -309,11 +322,7 @@ class DetectorNode(Node):
                 f"bbox centre not normalised ({bbox_cx_norm:.3f}, {bbox_cy_norm:.3f}); "
                 "expected [0,1] per Detection.msg — check _hailo_forward output scaling."
             )
-            det.geo_valid = False
-            det.latitude_deg = 0.0
-            det.longitude_deg = 0.0
-            det.altitude_amsl_m = 0.0
-            det.position_std_m = 0.0
+            self._mark_geo_invalid(det)
             return
 
         q = vs.attitude_q
@@ -323,12 +332,12 @@ class DetectorNode(Node):
             lat, lon, std = geolocate(
                 bbox_cx_norm=bbox_cx_norm,
                 bbox_cy_norm=bbox_cy_norm,
-                img_w=self._img_w,
-                img_h=self._img_h,
-                fx=self._fx,
-                fy=self._fy,
-                cx=self._cx,
-                cy=self._cy,
+                img_w=info.width,
+                img_h=info.height,
+                fx=info.k[0],
+                fy=info.k[4],
+                cx=info.k[2],
+                cy=info.k[5],
                 vehicle_lat_deg=vs.latitude_deg,
                 vehicle_lon_deg=vs.longitude_deg,
                 agl_m=float(vs.agl_m),
@@ -341,11 +350,7 @@ class DetectorNode(Node):
             det.position_std_m = float(std)
         except ValueError as exc:
             self.get_logger().warn(f"Geolocation failed: {exc}")
-            det.geo_valid = False
-            det.latitude_deg = 0.0
-            det.longitude_deg = 0.0
-            det.altitude_amsl_m = 0.0
-            det.position_std_m = 0.0
+            self._mark_geo_invalid(det)
 
 
 def main(args=None) -> None:

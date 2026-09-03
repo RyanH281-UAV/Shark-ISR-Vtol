@@ -16,14 +16,21 @@ uint8 CMD_RESUME = 4            # resume from PAUSE
 uint8 command
 
 # ── Parameters for CMD_START (ignored for all other commands) ─────────────────
-float64 search_lat_deg          # [deg] WGS-84 centre of circular search area
+float64 search_lat_deg          # [deg] WGS-84 centre of search area
 float64 search_lon_deg          # [deg] WGS-84
-float32 search_radius_m         # [m]   circular search area radius
+float32 search_radius_m         # [m]   circular search area radius —
+                                #       used only when search_length_m <= 0
 float32 transit_alt_amsl_m      # [m]   AMSL altitude for transit leg
 float32 search_alt_amsl_m       # [m]   AMSL altitude for search/loiter
                                 #       (AGL ≈ AMSL over open sea)
 float32 orbit_radius_m          # [m]   orbit radius when tracking a detection
                                 #       (0.0 → use parameter server default, typ. 50 m)
+
+# Strip search area (ADR-012/ADR-018) — see SetGuidanceMode.srv. Passed through
+# to guidance unchanged; search_length_m <= 0 keeps the circular area above.
+float32 search_length_m         # [m]   along-shore extent (0 = circle)
+float32 search_width_m          # [m]   cross-shore extent
+float32 shore_bearing_rad       # [rad] ENU bearing of the shoreline (REP-103)
 
 ---
 

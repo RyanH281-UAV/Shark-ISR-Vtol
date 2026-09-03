@@ -24,30 +24,15 @@ def test_initial_probabilities_sum_to_one():
     assert abs(total - 1.0) < 1e-6
 
 
-def test_initial_coverage_fraction_zero():
+def test_initial_coverage_fraction_full():
+    """Nothing has gone stale yet at mission start — coverage starts at 1.0,
+    not 0.0 (that was the old ever-swept metric, which pegged at 1.0 forever
+    after the first full sweep and never reflected staleness)."""
     bm = _uniform_map()
-    assert bm.coverage_fraction() == 0.0
-
-
-def test_initial_mean_probability():
-    bm = _uniform_map()
-    n = len(bm._cells)
-    expected_mean = 1.0 / n
-    assert abs(bm.mean_probability() - expected_mean) < 1e-9
+    assert bm.coverage_fraction(revisit_bound_s=50.0) == 1.0
 
 
 # ── null_observation ──────────────────────────────────────────────────────────
-
-def test_null_observation_reduces_swept_cells():
-    bm = _uniform_map()
-    n = len(bm._cells)
-    initial_mean = 1.0 / n
-    bm.null_observation(0.0, 0.0, footprint_radius_m=20.0, p_detection=0.9)
-    # Cells in footprint should have lower probability than initial uniform.
-    # (Some cells near origin will be reduced; others renormalised upward.)
-    # Check that coverage fraction increases.
-    assert bm.coverage_fraction() > 0.0
-
 
 def test_null_observation_probabilities_sum_to_one():
     bm = _uniform_map()
@@ -56,19 +41,26 @@ def test_null_observation_probabilities_sum_to_one():
     assert abs(total - 1.0) < 1e-6
 
 
-def test_null_observation_marks_swept_cells():
+def test_coverage_fraction_falls_as_unswept_cells_go_stale():
+    """The headline behaviour the ever-swept metric couldn't show: coverage
+    must actually FALL once cells outlive the revisit bound."""
     bm = _uniform_map()
-    assert bm.coverage_fraction() == 0.0
-    bm.null_observation(0.0, 0.0, 15.0)
-    assert bm.coverage_fraction() > 0.0
+    bound = 50.0
+    bm.decay_observation(dt_s=bound - 5.0, alpha=0.0)          # not stale yet
+    assert bm.coverage_fraction(bound) == 1.0
+    bm.null_observation(0.0, 0.0, footprint_radius_m=20.0)     # refresh a subset
+    bm.decay_observation(dt_s=10.0, alpha=0.0)                 # rest now > bound
+    frac = bm.coverage_fraction(bound)
+    assert 0.0 < frac < 1.0
 
 
-def test_full_sweep_coverage():
-    """Sweeping the entire area should give coverage_fraction = 1.0."""
+def test_coverage_fraction_recovers_after_full_sweep():
     bm = _uniform_map()
-    # Large footprint covering whole circle.
-    bm.null_observation(0.0, 0.0, footprint_radius_m=120.0)
-    assert bm.coverage_fraction() == 1.0
+    bound = 50.0
+    bm.decay_observation(dt_s=bound + 1.0, alpha=0.0)          # everything stale
+    assert bm.coverage_fraction(bound) == 0.0
+    bm.null_observation(0.0, 0.0, footprint_radius_m=120.0)    # whole circle
+    assert bm.coverage_fraction(bound) == 1.0
 
 
 # ── positive_detection ────────────────────────────────────────────────────────

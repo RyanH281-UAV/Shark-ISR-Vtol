@@ -12,8 +12,8 @@ from shark_isr_guidance.strategies import (
     LawnmowerStrategy,
     BayesianGreedyStrategy,
     PersistentPatrolStrategy,
-    BarrierStrategy,
     STRATEGIES,
+    threat_weights_from_shore,
 )
 
 TOL = 1e-9
@@ -95,24 +95,23 @@ def test_patrol_nominal_follows_weighted_probability():
     assert math.sqrt((wp.east - 70.0) ** 2 + (wp.north + 20.0) ** 2) < 20.0
 
 
-# ── Barrier (stub) + factory ──────────────────────────────────────────────────
+# ── Threat weights ────────────────────────────────────────────────────────────
 
-def test_barrier_is_stub():
-    # Stub must raise, not return [] — a silent empty plan would look like a
-    # valid "no waypoints" answer to the caller (CLAUDE.md: no silent failures).
-    region = _region()
-    try:
-        BarrierStrategy().next_waypoints(region, _map(region), (0.0, 0.0))
-    except NotImplementedError:
-        pass
-    else:
-        raise AssertionError('BarrierStrategy stub should raise NotImplementedError')
+def test_threat_weights_peak_at_shore_edge_and_fall_off_offshore():
+    region = _region()  # width 120, shore_bearing 0 → shore edge at local y=-60
+    bm = _map(region)
+    weights = threat_weights_from_shore(region, bm, scale_m=40.0)
+    offsets = {rc: region.cross_shore_offset(*bm.cell_centre(*rc)) for rc in bm.cells()}
+    nearest_rc = min(offsets, key=offsets.get)     # smallest offset = shore edge
+    farthest_rc = max(offsets, key=offsets.get)    # largest offset = furthest offshore
+    assert weights[nearest_rc] > weights[farthest_rc]
+    assert max(weights.values()) <= 1.0 + TOL      # peak weight is at offset ~0
 
+
+# ── Factory ───────────────────────────────────────────────────────────────────
 
 def test_strategy_factory_keys():
-    assert set(STRATEGIES) == {
-        'lawnmower', 'bayesian_greedy', 'persistent_patrol', 'barrier'
-    }
+    assert set(STRATEGIES) == {'lawnmower', 'bayesian_greedy', 'persistent_patrol'}
     # all instantiable with no required args
     for cls in STRATEGIES.values():
         cls()

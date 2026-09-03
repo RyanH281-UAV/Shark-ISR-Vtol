@@ -5,10 +5,13 @@ Produces `GuidanceSetpoint` — consumed by `shark_isr_autopilot`.
 
 ## Responsibilities
 
-- **Search strategy (ADR-012):** config choice via `search_strategy` —
-  `persistent_patrol` (default: belief-driven patrol with a hard revisit
-  bound), `bayesian_greedy` (first-find), or `lawnmower` (fixed boustrophedon baseline,
-  T10-verified).
+- **Search strategy (ADR-012/ADR-018):** config choice via `search_strategy` —
+  `persistent_patrol` (default: threat-weighted, hard revisit bound), `bayesian_greedy`
+  (first-find), or `lawnmower` (complete-coverage, ignores probability). All three are
+  belief-driven — they read the same `SearchRegion`/`BayesianSearchMap`.
+- **Search area:** circular (default, T10-verified) or a shoreline-oriented strip
+  (`search_length_m > 0` in `SetGuidanceMode`/`MissionCommand` — ADR-018). Only a real
+  strip has a shoreline for `persistent_patrol`'s threat weighting to use.
 - **Bayesian map:** discrete probability grid; null observations (sweep, no detection),
   positive detections (Gaussian likelihood spike), and time-based probability re-growth
   toward the prior (`regrowth_alpha`) — cleared water doesn't stay cleared.
@@ -56,6 +59,7 @@ Produces `GuidanceSetpoint` — consumed by `shark_isr_autopilot`.
 | `search_strategy` | persistent_patrol | `lawnmower` / `persistent_patrol` / `bayesian_greedy` (ADR-012) |
 | `revisit_bound_s` | 300.0 | Hard revisit bound T [s] (persistent_patrol) |
 | `regrowth_alpha` | 0.001 | Probability re-growth toward prior [1/s] |
+| `threat_scale_m` | 40.0 | Threat-weighting falloff scale from the shore edge [m] — strip area only (ADR-018) |
 | `orbit_radius_m` | 50.0 | Orbit radius when tracking [m] |
 | `footprint_radius_m` | 12.0 | Sensor footprint half-width for Bayesian update [m] |
 | `p_detection` | 0.85 | P(detect | shark in footprint) for Bayesian update |
@@ -87,11 +91,14 @@ python -m pytest ros2_ws/src/shark_isr_guidance/test/ -v
 ```
 
 Covers:
-- `test_search_pattern.py`: all waypoints inside circle, altitude constant,
-  alternating direction, coverage monotonic, edge cases.
-- `test_bayesian_map.py`: probabilities sum to 1 after every update,
-  detection increases centre probability, coverage tracker.
+- `test_search_pattern.py`: strip lanes stay inside the region and run along-shore
+  with no cross-shore gaps, rotation at arbitrary shore bearings, feasibility gate.
+- `test_bayesian_map.py`: probabilities sum to 1 after every update, detection
+  increases centre probability, staleness clock, coverage_fraction falls as cells
+  age past the revisit bound and recovers after a full sweep (ADR-018).
 - `test_strategies.py`: lawnmower cycling, greedy targeting, persistent-patrol
-  force-visit past the revisit bound, barrier stub raises.
+  force-visit past the revisit bound, threat weights peak at the shore edge.
 - `test_confidence_gate.py`: single lucky frame never triggers, short burst never
   triggers, sustained stream triggers, k-consecutive-tick rule, lost-target decay.
+- `test_guidance_node.py` (needs ROS, run via `colcon test`): the resume guard
+  preserves belief on an unchanged search area and rebuilds on a changed one.

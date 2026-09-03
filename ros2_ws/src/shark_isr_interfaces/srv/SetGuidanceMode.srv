@@ -22,8 +22,17 @@ geometry_msgs/Point transit_target_enu_m    # x=East [m], y=North [m], z=Up [m]
 
 # ── MODE_SEARCH parameters ────────────────────────────────────────────────────
 geometry_msgs/Point search_centre_enu_m     # ENU centre of search area
-float32 search_radius_m                     # [m] search area radius
+float32 search_radius_m                     # [m] circular search area radius —
+                                             # used only when search_length_m <= 0
 float32 search_alt_enu_z_m                  # [m] z (Up) altitude for search leg
+
+# Strip search area (ADR-012/ADR-018) — a beachfront swim zone is a strip, not
+# a circle. search_length_m <= 0 (the default) keeps the circular area above;
+# > 0 selects a rectangular strip oriented to the shoreline instead.
+float32 search_length_m                     # [m] along-shore extent (0 = circle)
+float32 search_width_m                      # [m] cross-shore extent
+float32 shore_bearing_rad                   # [rad] ENU bearing of the shoreline,
+                                             # 0 = +East, CCW+ (REP-103)
 
 # ── MODE_ORBIT parameters ─────────────────────────────────────────────────────
 geometry_msgs/Point orbit_centre_enu_m      # ENU point to orbit (typically a detection)

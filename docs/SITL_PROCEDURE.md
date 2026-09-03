@@ -5,10 +5,16 @@
 > package checklist item maps to a numbered test here. Nothing flies until every
 > test in §6 passes (ADR-005).
 >
-> Status: build + node bring-up verified 2026-06-11. T01–T11 have been run and passed, but
-> **no run output was ever committed** — `docs/sitl_runs/` (§ below) does not exist yet, so the
-> figures quoted in `README.md` are transcribed claims rather than evidence. T10/T11 additionally
-> need re-running against the ADR-016 confidence gate and ADR-012 patrol strategy.
+> Status: build + node bring-up verified 2026-06-11. T01–T11 have been run and passed.
+> **T10 and T11 were re-run 2026-09-03 against the ADR-016 confidence gate and the ADR-012/018
+> patrol default, and their console output is committed** in `docs/sitl_runs/2026-09-03.md` —
+> the first committed run record. T01–T09 have no committed output yet, so their `README.md`
+> figures remain transcribed claims until re-run the same way.
+>
+> Before trusting any run: `sitl_stop.sh` kills the `ros2 launch` wrappers but **not** the node
+> binaries, and stale nodes from an earlier terminal share the DDS domain. Check
+> `ps aux | grep -E "autopilot_bridge|guidance_node|mission_node|mock_camera|detector_node"`
+> shows one process per node (kill extras by PID). Don't run perception during T10.
 
 ---
 

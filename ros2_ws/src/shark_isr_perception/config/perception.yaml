@@ -28,6 +28,11 @@
     #
     # Patrol altitude: 30 m AGL (ADR-010).  Ground footprint ≈ 39 m.
     # Expected shark pixel size: ~41 px at 640 px input (above 32 px threshold).
+    #
+    # ADR-018: detector_node no longer declares its own copy of these — it
+    # reads intrinsics from the /camera/camera_info topic (built from these
+    # same values by camera_node/mock_camera_node), so there is one source
+    # of truth instead of three independently-drifting copies.
     image_width:  640
     image_height: 480
     fx: 616.0

@@ -3,7 +3,7 @@
 **Purpose:** Custom msgs and srvs — the integration contract for the shark ISR autonomy stack.
 All other packages depend only on this package; none depend on each other's internals (ADR-004).
 
-**Status:** FROZEN — 2026-05-31. `colcon build` passes clean on ROS 2 Humble. Do not change field names, types, or units without a new ADR.
+**Status:** FROZEN — 2026-05-31, amended 2026-09-03 (ADR-018: additive strip-area fields on `SetGuidanceMode.srv`/`MissionCommand.srv`, `SearchState.msg` field swap). `colcon build` passes clean on ROS 2 Humble. Do not change field names, types, or units without a new ADR.
 
 ---
 
@@ -79,9 +79,9 @@ No other package handles this conversion.
 |---|---|---|---|
 | `header` | `std_msgs/Header` | — | stamp = last update |
 | `phase` | `uint8` | PHASE_* | IDLE/TRANSIT/SEARCH/TRACK/RETURN |
-| `coverage_fraction` | `float32` | [0, 1] | Fraction of search area observed |
+| `coverage_fraction` | `float32` | [0, 1] | Fraction of the map within the hard revisit bound (fresh) — falls as cells go stale, not cumulative ever-swept coverage (ADR-018) |
 | `map_max_probability` | `float32` | [0, 1] | Peak Bayesian map cell probability |
-| `map_mean_probability` | `float32` | [0, 1] | Mean map cell probability |
+| `max_cell_age_s` | `float32` | s | Staleness of the stalest map cell — the hard revisit bound (ADR-018; replaces `map_mean_probability`, which was mathematically constant at 1/n_cells and carried no information) |
 | `time_on_station_s` | `float32` | s | Elapsed in SEARCH or TRACK phase |
 | `current_target_enu_m` | `geometry_msgs/Point` | m ENU | Active waypoint/target |
 | `target_locked` | `bool` | — | true if in TRACK with active detection |
@@ -125,10 +125,13 @@ No other package handles this conversion.
 | `command` | `uint8` | CMD_* | START / ABORT / RETURN / PAUSE / RESUME |
 | `search_lat_deg` | `float64` | deg WGS-84 | Search area centre latitude (START only) |
 | `search_lon_deg` | `float64` | deg WGS-84 | Search area centre longitude (START only) |
-| `search_radius_m` | `float32` | m | Search area radius (START only) |
+| `search_radius_m` | `float32` | m | Circular search area radius — used only when `search_length_m <= 0` (START only) |
 | `transit_alt_amsl_m` | `float32` | m AMSL | Transit altitude (START only) |
 | `search_alt_amsl_m` | `float32` | m AMSL | Search/loiter altitude (START only) |
 | `orbit_radius_m` | `float32` | m | Orbit radius on detection; 0 = default (START only) |
+| `search_length_m` | `float32` | m | Along-shore strip extent; `<= 0` keeps the circular area above (ADR-018, START only) |
+| `search_width_m` | `float32` | m | Cross-shore strip extent (START only) |
+| `shore_bearing_rad` | `float32` | rad | ENU bearing of the shoreline, REP-103 (START only) |
 
 **Response:**
 
@@ -150,9 +153,12 @@ No other package handles this conversion.
 |---|---|---|---|
 | `mode` | `uint8` | MODE_* | IDLE / TRANSIT / SEARCH / ORBIT / RETURN |
 | `transit_target_enu_m` | `geometry_msgs/Point` | m ENU | Destination (TRANSIT) |
-| `search_centre_enu_m` | `geometry_msgs/Point` | m ENU | Search area centre (SEARCH) |
-| `search_radius_m` | `float32` | m | Search area radius (SEARCH) |
+| `search_centre_enu_m` | `geometry_msgs/Point` | m ENU | Search area centre (SEARCH, also read at TRANSIT to seed the on-arrival search — ADR-018) |
+| `search_radius_m` | `float32` | m | Circular search area radius — used only when `search_length_m <= 0` (SEARCH) |
 | `search_alt_enu_z_m` | `float32` | m (z Up) | Search altitude above home (SEARCH) |
+| `search_length_m` | `float32` | m | Along-shore strip extent; `<= 0` keeps the circular area above (ADR-018, SEARCH) |
+| `search_width_m` | `float32` | m | Cross-shore strip extent (SEARCH) |
+| `shore_bearing_rad` | `float32` | rad | ENU bearing of the shoreline, REP-103 (SEARCH) |
 | `orbit_centre_enu_m` | `geometry_msgs/Point` | m ENU | Orbit centre (ORBIT) |
 | `orbit_radius_m` | `float32` | m | Orbit radius (ORBIT) |
 | `orbit_clockwise` | `bool` | — | CW from above; false = CCW default |

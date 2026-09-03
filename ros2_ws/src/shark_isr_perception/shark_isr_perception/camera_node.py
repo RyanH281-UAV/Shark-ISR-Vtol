@@ -50,6 +50,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import Header
 
+from .camera_info import build_camera_info
+
 
 def _bgr_frame_to_rgb_bytes(bgr: np.ndarray) -> bytes:
     """OpenCV decodes to BGR; detector_node expects rgb8. Swap channel order.
@@ -185,20 +187,11 @@ class CameraNode(Node):
         return True
 
     def _build_camera_info(self) -> CameraInfo:
-        fx = self.get_parameter("fx").value
-        fy = self.get_parameter("fy").value
-        cx = self.get_parameter("cx").value
-        cy = self.get_parameter("cy").value
-
-        info = CameraInfo()
-        info.width = self._w
-        info.height = self._h
-        info.distortion_model = "plumb_bob"
-        info.d = [0.0, 0.0, 0.0, 0.0, 0.0]
-        info.k = [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]
-        info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-        info.p = [fx, 0.0, cx, 0.0, 0.0, fy, cy, 0.0, 0.0, 0.0, 1.0, 0.0]
-        return info
+        return build_camera_info(
+            self._w, self._h,
+            self.get_parameter("fx").value, self.get_parameter("fy").value,
+            self.get_parameter("cx").value, self.get_parameter("cy").value,
+        )
 
     def _publish_frame(self) -> None:
         if self._cap is None or not self._cap.isOpened():
