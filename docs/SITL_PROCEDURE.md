@@ -6,15 +6,20 @@
 > test in §6 passes (ADR-005).
 >
 > Status: build + node bring-up verified 2026-06-11. T01–T11 have been run and passed.
-> **T10 and T11 were re-run 2026-09-03 against the ADR-016 confidence gate and the ADR-012/018
-> patrol default, and their console output is committed** in `docs/sitl_runs/2026-09-03.md` —
-> the first committed run record. T01–T09 have no committed output yet, so their `README.md`
-> figures remain transcribed claims until re-run the same way.
+> **T06–T11 were all re-run 2026-09-03 against the ADR-016 confidence gate and the ADR-012/018
+> patrol default, and their console output is committed** — `docs/sitl_runs/2026-09-03-t10-t11.md`
+> (T10, T11) and `docs/sitl_runs/2026-09-03-t06-t09.md` (T06–T09), the first committed run
+> records in the repo. T01–T05 have no committed output yet, so their `README.md` figures remain
+> transcribed claims until re-run the same way.
 >
 > Before trusting any run: `sitl_stop.sh` kills the `ros2 launch` wrappers but **not** the node
 > binaries, and stale nodes from an earlier terminal share the DDS domain. Check
 > `ps aux | grep -E "autopilot_bridge|guidance_node|mission_node|mock_camera|detector_node"`
-> shows one process per node (kill extras by PID). Don't run perception during T10.
+> shows one process per node (kill extras by PID). Don't run perception during T10. T07 kills
+> `autopilot_bridge` by design — restart it before T08/T09/T10. After T08's RTL the vehicle may
+> land but not auto-disarm for several minutes (landing-detector quirk, not a code defect) —
+> `mission_node` won't reach IDLE until it does; disarm manually via `AutopilotCommand.CMD_DISARM`
+> to unblock the next test rather than waiting indefinitely.
 
 ---
 

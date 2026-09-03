@@ -13,21 +13,24 @@
 ## Where the project stands
 
 The SITL campaign (T06–T11) ran and passed — orbit geometry, companion-loss failsafe, abort→RTL,
-low-battery return, full end-to-end mission, and the perception→TRACK chain are all sim-verified
-(evidence: `sim/orbit_trace.png`, README §SITL). Since that campaign, two headline behaviours were
-wired into guidance (2026-07-13) and now need a **T10/T11 re-run** before they count as verified:
+low-battery return, full end-to-end mission, and the perception→TRACK chain are all sim-verified,
+with console output committed in `docs/sitl_runs/` (2026-09-03, README §SITL). Two headline
+behaviours wired into guidance on 2026-07-13 were re-verified against that committed campaign:
 
 1. **Confidence gate (ADR-016)** — SEARCH→TRACK requires sustained evidence, not one frame.
 2. **Persistent patrol (ADR-012)** — belief-driven strategy with hard revisit bound + probability
    re-growth replaces the fixed lawnmower (which remains available as `search_strategy: lawnmower`).
+
+ADR-018 (2026-09-03) went further — the strip region and threat weighting these two behaviours
+were *supposed* to run over were unit-tested but never reachable from `guidance_node`; see below.
 
 ## Capability map
 
 | # | Capability | State | Critical gaps |
 |---|---|---|---|
 | 1 | **Mission control** — full state machine, ARM→OFFBOARD→TRANSIT chain PX4-confirmed, pause/resume | ✅ (T08/T09/T10) | `mission_node` still has zero unit tests (state matrix, CMD_START guard). |
-| 2 | **Search** — persistent patrol / greedy / lawnmower strategies over Bayesian map, re-growth, hard revisit bound | 🔶 | Wired 2026-07-13; ADR-018 (2026-09-03) connected the strip region + threat weighting, fixed the belief-map-wipe-on-resume and mission-stuck-in-TRANSITING defects, removed `BarrierStrategy`. T10/T11 SITL-verified against the collapsed strategy layer; strip area itself not yet flown even in SITL (mission still commands a circle by default). `check_feasibility` still unwired. |
-| 3 | **Detection gating** — confidence accumulates/decays; sustained τ crossing transitions; lost-target reverts to SEARCH | 🔶 | Wired 2026-07-13 (ADR-016), unit-tested; **T10/T11 re-run pending.** |
+| 2 | **Search** — persistent patrol / greedy / lawnmower strategies over Bayesian map, re-growth, hard revisit bound | 🔶 | Wired 2026-07-13; ADR-018 (2026-09-03) connected the strip region + threat weighting, fixed the belief-map-wipe-on-resume and mission-stuck-in-TRANSITING defects, removed `BarrierStrategy`. T06–T11 SITL-verified with committed logs against the collapsed strategy layer; strip area itself not yet flown even in SITL (mission still commands a circle by default). `check_feasibility` still unwired. |
+| 3 | **Detection gating** — confidence accumulates/decays; sustained τ crossing transitions; lost-target reverts to SEARCH | ✅ | Wired 2026-07-13 (ADR-016), unit-tested; SITL re-run 2026-09-03 with committed logs — 5-frame burst held, 30-frame stream fired (T10). |
 | 4 | **Perception** — HailoRT lifecycle, letterboxed ingest, geolocation, sim burst mode | 🟡 | `_hailo_forward` output parser is still a placeholder — adapt to the real `.hef` tensor layout on the bench (B08). `shark_detector.hef` compiled but not deployed (`hef_path` empty). No picamera2 camera node yet. |
 | 5 | **Autopilot bridge** — uXRCE-DDS, offboard orbit synthesis, unified VehicleState, force-arm now gated behind `sitl_force_arm` | ✅ (T06/T07) | MAVLink fallback is a documented option, not code (nothing needs it — QGC talks MAVLink to the Pixhawk directly). |
 | 6 | **Safety / failsafes** — battery→RTL, arm/transit/track timeouts, companion-loss verified | ✅ (T07/T08/T09) | PX4 geofence + RTL params still to be configured/verified on hardware (B13). CASA checklist before flight. |

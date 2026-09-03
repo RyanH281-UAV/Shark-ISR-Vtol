@@ -314,8 +314,8 @@ Format per entry: context, decision, rationale, status.
 - **Consequences:** (a) `detector_node` sim mode emits *bursts* (`mock_burst_frames`, default 30)
   instead of single frames — a real target stays in the footprint for seconds, and the gate
   correctly ignores isolated blips. (b) T10 now asserts both halves: a 5-frame burst must NOT
-  transition; a 30-frame stream must. (c) Unit-tested (`test_confidence_gate.py`); SITL re-run of
-  T10/T11 pending.
+  transition; a 30-frame stream must. (c) Unit-tested (`test_confidence_gate.py`); SITL re-run
+  done 2026-09-03 (ADR-018), both halves pass, logs committed in `docs/sitl_runs/`.
 - **Status:** Locked (2026-07-13).
 
 ---
@@ -480,12 +480,20 @@ Format per entry: context, decision, rationale, status.
   the strip enables, not a separate simplification pass.
 - **Status:** Implemented and unit-tested 2026-09-03 (`test_bayesian_map.py`, `test_strategies.py`,
   new `test_guidance_node.py` and `test_mission_node.py` covering the resume-guard and phase-mirror
-  fixes specifically). **SITL-verified 2026-09-03**: T10 (confidence gate both halves, full
-  IDLE→SEARCH→TRACK→RETURN cycle) and T11 (perception pipeline → TRACK, `geo_valid=True` via the
-  new `CameraInfo` subscription) both pass on a clean single-instance stack. Strip/threat-weighting
-  exercised by unit tests only — no SITL scenario yet drives a real (non-circular) search area; T10
-  and T11 both use the default circular area, so this ADR's interface unfreeze and defect fixes are
-  SITL-verified, but the strip geometry itself is not yet flown even in simulation.
+  fixes specifically). **SITL-verified 2026-09-03, full T06–T11 campaign, console output committed**
+  in `docs/sitl_runs/2026-09-03-t10-t11.md` and `docs/sitl_runs/2026-09-03-t06-t09.md`: T06 (orbit
+  geometry, 20/20 at 30.00 m), T07 (companion-loss failsafe, OFFBOARD exit in 5.0 s), T08
+  (CMD_ABORT → RTL), T09 (low-battery → RETURN), T10 (confidence gate both halves, full
+  IDLE→SEARCH→TRACK→RETURN cycle), and T11 (perception pipeline → TRACK, `geo_valid=True` via the
+  new `CameraInfo` subscription) all pass on a clean single-instance stack per test. One SITL
+  environment finding surfaced running T09 (not a code defect, see the T06–T09 run file): PX4's
+  landing detector didn't auto-disarm for several minutes after T08's RTL despite the aircraft
+  having landed, blocking `mission_node`'s RETURNING→IDLE transition until disarmed manually via
+  `AutopilotCommand.CMD_DISARM` — worth checking at hardware bring-up.
+  Strip/threat-weighting is exercised by unit tests only — no SITL scenario yet drives a real
+  (non-circular) search area; every run above uses the default circular area, so this ADR's
+  interface unfreeze and defect fixes are SITL-verified, but the strip geometry itself is not yet
+  flown even in simulation.
 
 ---
 

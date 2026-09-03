@@ -8,7 +8,7 @@
 ![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-1c7ed6)
 ![PX4](https://img.shields.io/badge/PX4-uXRCE--DDS-0E7C86)
 ![Edge AI](https://img.shields.io/badge/Edge%20AI-Hailo--8L%2013%20TOPS-D97B25)
-![SITL](https://img.shields.io/badge/SITL-T06--T09%20pass%20%C2%B7%20T10%2FT11%20re--run%20pending-yellow)
+![SITL](https://img.shields.io/badge/SITL-T06--T11%20pass%2C%20logs%20committed-2f9e44)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ![Autonomy stack installed inside the Hornet VTOL fuselage](docs/img/stack-installed.jpg)
@@ -159,10 +159,10 @@ rather than a microSD — the original cards turned out to be counterfeit (see
 |---|---|---|
 | 1 | Interface contract — 6 interfaces frozen (7th, `AutopilotCommand`, added Phase 3) | ✅ Frozen 2026-05-31 |
 | 2 | PX4 SITL + Gazebo coastal world + DDS bridge | 🔶 World + launcher done; DDS gate pending |
-| 3 | Autopilot bridge (sole PX4 boundary, uXRCE-DDS) | ✅ SITL ✓ — T06 orbit · T07 failsafe |
-| 4 | Guidance — Bayesian map, search, orbit-on-detect | ✅ SITL ✓ — T10 search + track transition |
-| 5 | Perception — Cam3 → Hailo detector → geolocation | 🔶 SITL ✓ for the **mock** chain (T11); Hailo path unverified |
-| 6 | Mission — state machine, failsafes | ✅ SITL ✓ — T08 abort · T09 battery · T10 e2e |
+| 3 | Autopilot bridge (sole PX4 boundary, uXRCE-DDS) | ✅ SITL ✓ — T06 orbit · T07 failsafe (logs committed) |
+| 4 | Guidance — Bayesian map, search, orbit-on-detect | ✅ SITL ✓ — T10 search + track transition (logs committed); strip area unit-tested only |
+| 5 | Perception — Cam3 → Hailo detector → geolocation | 🔶 SITL ✓ for the **mock** chain (T11, logs committed); Hailo path unverified |
+| 6 | Mission — state machine, failsafes | ✅ SITL ✓ — T08 abort · T09 battery · T10 e2e (logs committed) |
 | 7 | Telemetry — JSONL logs, GCS relay | 🔶 Code complete; SITL rehearsal pending |
 | 8 | Hardware bring-up, mass/power budget, flight test | ⬜ Planned (post-budget) |
 
@@ -178,23 +178,32 @@ before any sim run — validating the SITL-first rule.
 
 SITL runs the real ROS 2 nodes against a simulated PX4 autopilot and Gazebo Harmonic world.
 It is the project's release gate: **no code reaches the aircraft until it has passed in SITL.**
-T01–T05 (DDS bridge, arming, takeoff, loiter) passed in a prior campaign. T06–T11 cover the full
-mission stack. *2026-09-03: T10 and T11 re-run against the confidence gate (ADR-016) and the
-persistent-patrol default (ADR-012/018) — both pass; console output is committed in
-`docs/sitl_runs/2026-09-03.md`. T06–T09 figures below are still from the earlier campaign.*
+T01–T05 (DDS bridge, arming, takeoff, loiter) passed in a prior campaign; T01–T05 figures remain
+transcribed claims (no committed output). T06–T11 cover the full mission stack and were **all
+re-run 2026-09-03** against the current code — the confidence gate (ADR-016) and the
+persistent-patrol default (ADR-012/018) — in two sessions the same day: T10/T11 first, then
+T06–T09. All six pass; console output for all six is committed.
 
 | Test | Proves | Evidence |
 |---|---|---|
-| **T06** — Orbit geometry | Bridge holds a precise 30 m circular orbit | 20/20 setpoints on circle (min=max=mean=30.00 m) |
-| **T07** — Companion failsafe | If companion stops streaming, PX4 leaves Offboard on its own. What it does next is `COM_OBL_ACT` (unset in SITL → Position mode); RTL on hardware is gate B13 | Offboard loss → PX4 exits OFFBOARD in 5.1 s (COM_OF_LOSS_T) |
-| **T08** — Operator abort | Operator can abort; aircraft returns home under autopilot | CMD_ABORT drove PX4 to nav_state RTL |
-| **T09** — Low-battery failsafe | Low battery auto-triggers return before aircraft is stranded | Threshold crossing → mission RETURNING (tuneable live via ROS 2 param) |
-| **T10** — End-to-end mission | Full state machine runs start-to-finish without intervention; confidence gate holds on a 5-frame burst and fires on a 30-frame stream | IDLE→SEARCH→TRACK→RETURN in 14.6 s, gate held ✓ then fired ✓ (2026-09-03, `docs/sitl_runs/`). TRANSIT is not observed at the 2 Hz state rate because the search centre is SITL home — arrival is immediate |
-| **T11** — Perception → TRACK | The real *node* chain makes the SEARCH→TRACK decision itself, with no test-side injection | mock_camera_node → detector_node (sim mode) → /detection → guidance TRACK in 6.4 s; 45 detections received, `geo_valid=True` via the `/camera/camera_info` intrinsics path (2026-09-03, `docs/sitl_runs/`). **No real camera or Hailo inference is in this loop.** |
+| **T06** — Orbit geometry | Bridge holds a precise 30 m circular orbit | 20/20 setpoints on circle, min=max=mean=30.00 m |
+| **T07** — Companion failsafe | If companion stops streaming, PX4 leaves Offboard on its own. What it does next is `COM_OBL_ACT` (unset in SITL → Position mode); RTL on hardware is gate B13 | Offboard loss → PX4 exits OFFBOARD in 5.0 s (COM_OF_LOSS_T=5.0s) |
+| **T08** — Operator abort | Operator can abort; aircraft returns home under autopilot | CMD_ABORT drove PX4 to nav_state=5 (RTL) |
+| **T09** — Low-battery failsafe | Low battery auto-triggers return before aircraft is stranded | Threshold crossing → guidance PHASE_RETURN (tuneable live via ROS 2 param) |
+| **T10** — End-to-end mission | Full state machine runs start-to-finish without intervention; confidence gate holds on a 5-frame burst and fires on a 30-frame stream | IDLE→SEARCH→TRACK→RETURN in 14.6 s, gate held ✓ then fired ✓. TRANSIT is not observed at the 2 Hz state rate because the search centre is SITL home — arrival is immediate |
+| **T11** — Perception → TRACK | The real *node* chain makes the SEARCH→TRACK decision itself, with no test-side injection | mock_camera_node → detector_node (sim mode) → /detection → guidance TRACK in 6.4 s; 45 detections received, `geo_valid=True` via the `/camera/camera_info` intrinsics path. **No real camera or Hailo inference is in this loop.** |
 
-> **Evidence provenance.** T10 and T11 figures are from console output committed in
-> `docs/sitl_runs/2026-09-03.md`. T06–T09 figures are transcribed from console output that was
-> not saved — treat those four as claims until they are re-run and committed the same way.
+> **Evidence provenance.** T06–T11 figures are all from console output committed in
+> `docs/sitl_runs/2026-09-03-t10-t11.md` (T10, T11) and `docs/sitl_runs/2026-09-03-t06-t09.md`
+> (T06–T09). T01–T05 have no committed output yet — treat those as claims until re-run and
+> committed the same way. A real (non-circular) search area has never been exercised in SITL —
+> every run above uses the default circular area.
+>
+> **One SITL-environment finding surfaced running T09** (not a code defect): after T08's RTL, the
+> landing detector didn't auto-disarm within several minutes even though the aircraft had
+> touched down — `mission_node`'s RETURNING→IDLE transition (which waits on disarm) blocked until
+> disarmed manually via the existing `AutopilotCommand.CMD_DISARM` service. Worth checking on
+> real hardware before assuming RTL is a fully hands-off recovery.
 
 ```bash
 ./sim/tests/run_tests.sh          # PX4 SITL + Gazebo Harmonic + ROS 2 Humble

@@ -71,7 +71,8 @@ Do not jump phases — interfaces are frozen before nodes are built; SITL preced
 - [x] `shark_isr_telemetry`: structured logging of flight + detections + decisions
 - [x] GCS/operator summary relay (`/telemetry_summary` String at 1 Hz)
 - [x] Full mission rehearsal in SITL; logs reviewed (T10, campaign 2026-06/07)
-- [ ] Re-run T10/T11 with confidence gate (ADR-016) + persistent patrol (ADR-012) — wired 2026-07-13
+- [x] Re-run T10/T11 with confidence gate (ADR-016) + persistent patrol (ADR-012) — wired
+  2026-07-13, re-run + logs committed 2026-09-03 (ADR-018)
 
 ## Phase 8 — Hardware bring-up (post-budget)
 
