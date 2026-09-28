@@ -73,3 +73,6 @@ credentials.*
 # from being swept back in by `git add -A`.
 site-v2/
 legacy/
+
+# Private docs — already-tracked files in docs/ stay tracked
+docs/
