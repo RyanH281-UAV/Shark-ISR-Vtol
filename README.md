@@ -46,15 +46,15 @@ has never run. That is bench gate B08.*
 ---
 
 ## Architecture
-
-```mermaid
-flowchart LR
+<!-- -->
+<!--```mermaid --> 
+<!--flowchart LR
     subgraph CC["Companion — Raspberry Pi 5 · ROS 2"]
         PER[perception<br/>Cam3 → Hailo-8L → geo]
         GUI[guidance<br/>Bayes map · state machine]
         MIS[mission<br/>sequencing · arbitration]
         AP[autopilot<br/>sole PX4 boundary]
-        TEL[telemetry<br/>logs · GCS relay]
+        TEL[telemetry<br/>logs · GCS relay] -->
 
         AP -->|vehicle_state| GUI
         AP -->|vehicle_state| MIS
@@ -68,6 +68,7 @@ flowchart LR
     end
     AP <-->|uXRCE-DDS| PX4[PX4 — Pixhawk 6C Mini<br/>inner loop · tilt transition · failsafes]
 ```
+
 <img width="670" height="488" alt="image" src="https://github.com/user-attachments/assets/68760440-3f19-4e8a-8040-e8b08ab9bf16" />
 
 **The responsibility boundary is the design.**
