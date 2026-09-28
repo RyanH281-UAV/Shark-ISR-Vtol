@@ -32,7 +32,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Shark-ISR VTOL — Autonomous Aerial Shark Surveillance",
   description:
-    "A tri-tiltrotor VTOL that patrols a swim zone, detects sharks onboard with a 13-TOPS NPU, and switches to a tracking orbit on its own. No video downlink in the decision loop.",
+    "A tri-tiltrotor VTOL that patrols a swim zone, is built to detect sharks onboard with a 13-TOPS NPU, and switches to a tracking orbit on its own. No video downlink in the decision loop.",
 };
 
 export default function RootLayout({

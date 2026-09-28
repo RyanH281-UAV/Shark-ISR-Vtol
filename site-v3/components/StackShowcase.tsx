@@ -46,7 +46,7 @@ const BOARDS = [
       ["NPU", "Hailo-8L, 13 TOPS INT8"],
       ["Link", "PCIe Gen 3 to the Pi 5"],
       ["Model", "YOLOv8n fine-tune, compiled to .hef"],
-      ["Scored", "0.945 mAP50 · 95% recall, held-out"],
+      ["Scored", "0.945 mAP50, held-out test set"],
     ],
     detail:
       "Inference is designed to happen on the aircraft: losing every radio link costs situational awareness, never autonomy, and there is no video downlink in the decision loop. The model is compiled; running it on the NPU is the next bench gate.",
@@ -81,7 +81,7 @@ const BOARDS = [
       ["Link", "uXRCE-DDS over serial"],
     ],
     detail:
-      "The safety boundary. Kill the companion computer mid-flight and PX4 exits Offboard on its own and brings the aircraft home. Verified by killing the bridge process in SITL.",
+      "The safety boundary. Kill the companion computer mid-flight and PX4 exits Offboard on its own. Verified by killing the bridge process in SITL; the post-loss action is a PX4 parameter, set to RTL at hardware bring-up.",
   },
   {
     id: "pwr",
