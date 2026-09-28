@@ -68,6 +68,7 @@ flowchart LR
     end
     AP <-->|uXRCE-DDS| PX4[PX4 — Pixhawk 6C Mini<br/>inner loop · tilt transition · failsafes]
 ```
+<img width="670" height="488" alt="image" src="https://github.com/user-attachments/assets/68760440-3f19-4e8a-8040-e8b08ab9bf16" />
 
 **The responsibility boundary is the design.**
 
