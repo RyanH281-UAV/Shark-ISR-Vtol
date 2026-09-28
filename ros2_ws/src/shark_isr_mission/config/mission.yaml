@@ -26,3 +26,7 @@ mission_node:
     search_length_m: 0.0     # [m] along-shore extent; 0 = circle
     search_width_m: 120.0    # [m] cross-shore extent
     shore_bearing_rad: 0.0   # [rad] ENU bearing of the shoreline (REP-103)
+    # Altitude envelope, metres ABOVE HOME. CMD_START altitudes are AMSL and
+    # are converted to height above home, then rejected if outside this band.
+    min_alt_above_home_m: 10.0
+    max_alt_above_home_m: 120.0   # CASA standard-operating ceiling (400 ft AGL)

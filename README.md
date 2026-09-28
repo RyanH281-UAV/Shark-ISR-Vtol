@@ -148,8 +148,8 @@ rather than a microSD - the original cards turned out to be counterfeit (see
 | 7 | Telemetry - JSONL logs, GCS relay | 🔶 Code complete; SITL rehearsal pending |
 | 8 | Hardware bring-up, mass/power budget, flight test | ⬜ Planned (post-budget) |
 
-All seven packages build green (`colcon` 8/8 on ROS 2 Humble). **80/80 unit tests pass**
-(10 autopilot · 50 guidance · 12 perception · 8 mission). `telemetry_node` has no unit tests -
+All seven packages build green (`colcon` 8/8 on ROS 2 Humble). **94/94 unit tests pass**
+(10 autopilot · 55 guidance · 16 perception · 13 mission; re-run 2026-09-28). `telemetry_node` has no unit tests —
 it is covered only by the SITL campaign.
 A full-stack code review (ADR-011) caught and fixed 2 safety-critical + 6 high-severity bugs
 before any sim run - validating the SITL-first rule.
@@ -160,11 +160,14 @@ before any sim run - validating the SITL-first rule.
 
 SITL runs the real ROS 2 nodes against a simulated PX4 autopilot and Gazebo Harmonic world.
 It is the project's release gate: **no code reaches the aircraft until it has passed in SITL.**
-T01–T05 (DDS bridge, arming, takeoff, loiter) passed in a prior campaign; T01–T05 figures remain
+T1–T5 in `docs/SITL_PROCEDURE.md` (Offboard engagement, HOLD/RTL/LAND mode encoding, mission
+start, search pattern, detection → orbit) passed in a prior campaign; T01–T05 figures remain
 transcribed claims (no committed output). T06–T11 cover the full mission stack and were **all
-re-run 2026-09-03** against the current code - the confidence gate (ADR-016) and the
-persistent-patrol default (ADR-012/018) - in two sessions the same day: T10/T11 first, then
-T06–T09. All six pass; console output for all six is committed.
+re-run 2026-09-03** against the current code — the confidence gate (ADR-016) and the
+persistent-patrol default (ADR-012/018) — in two sessions the same day: T10/T11 first, then
+T06–T09. All six pass; console output for all six is committed. **All six re-run again
+2026-09-28** after ADR-019 (orbit radius passed through to guidance; CMD_START altitudes
+converted from AMSL to height above home) — all pass. The table figures are from 2026-09-03.
 
 | Test | Proves | Evidence |
 |---|---|---|
@@ -177,8 +180,8 @@ T06–T09. All six pass; console output for all six is committed.
 
 > **Evidence provenance.** T06–T11 figures are all from console output committed in
 > `docs/sitl_runs/2026-09-03-t10-t11.md` (T10, T11) and `docs/sitl_runs/2026-09-03-t06-t09.md`
-> (T06–T09). T01–T05 have no committed output yet - treat those as claims until re-run and
-> committed the same way. A real (non-circular) search area has never been exercised in SITL -
+> (T06–T09). T1–T5 have no committed output yet — treat those as claims until re-run and
+> committed the same way. A real (non-circular) search area has never been exercised in SITL —
 > every run above uses the default circular area.
 >
 > **One SITL-environment finding surfaced running T09** (not a code defect): after T08's RTL, the

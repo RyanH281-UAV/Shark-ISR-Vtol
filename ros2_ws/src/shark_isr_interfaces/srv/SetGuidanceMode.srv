@@ -36,7 +36,11 @@ float32 shore_bearing_rad                   # [rad] ENU bearing of the shoreline
 
 # ── MODE_ORBIT parameters ─────────────────────────────────────────────────────
 geometry_msgs/Point orbit_centre_enu_m      # ENU point to orbit (typically a detection)
-float32 orbit_radius_m                      # [m] orbit radius
+float32 orbit_radius_m                      # [m] orbit radius (0 = mission radius)
+                                             # ALSO read by MODE_TRANSIT and
+                                             # MODE_SEARCH: the radius to use when
+                                             # the confidence gate enters TRACK
+                                             # this mission (0 = keep current).
 bool    orbit_clockwise                     # true = CW from above; false (default) = CCW
 
 ---

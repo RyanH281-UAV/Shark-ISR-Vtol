@@ -15,6 +15,16 @@ Updates:
       Detection at det_pos.  Multiply all cells by a Gaussian likelihood
       centred on det_pos and renormalise.
 
+Why log-probabilities: each "looked, saw nothing" pass multiplies a cell by
+(1 − p_detection) = 0.15. After a dozen passes that is ~1e-10, and plain
+floats would underflow toward 0 and stop meaning anything. In log space the
+same update is just an addition (log 0.15 ≈ −1.9), and _normalise() uses the
+log-sum-exp trick to keep the total at exactly 1.
+
+Cost: every update loops over every cell. A 100 m radius circle at 5 m cells
+is ~1,250 cells; a 1 km × 120 m strip is ~4,800. That is fine in Python at
+5 Hz, but cell_size_m is the knob if a much larger area makes the Pi lag.
+
 Coverage metric:
   coverage_fraction(revisit_bound_s) = fraction of cells whose age is within
   the revisit bound — i.e. "fresh enough" for a persistent patrol.  This is

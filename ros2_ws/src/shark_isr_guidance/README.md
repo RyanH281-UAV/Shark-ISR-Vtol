@@ -60,7 +60,7 @@ Produces `GuidanceSetpoint` — consumed by `shark_isr_autopilot`.
 | `revisit_bound_s` | 300.0 | Hard revisit bound T [s] (persistent_patrol) |
 | `regrowth_alpha` | 0.001 | Probability re-growth toward prior [1/s] |
 | `threat_scale_m` | 40.0 | Threat-weighting falloff scale from the shore edge [m] — strip area only (ADR-018) |
-| `orbit_radius_m` | 50.0 | Orbit radius when tracking [m] |
+| `orbit_radius_m` | 50.0 | Default orbit radius when tracking [m]. Overridden per mission by `SetGuidanceMode.orbit_radius_m` on TRANSIT/SEARCH (from `CMD_START`); reset on IDLE |
 | `footprint_radius_m` | 12.0 | Sensor footprint half-width for Bayesian update [m] |
 | `p_detection` | 0.85 | P(detect | shark in footprint) for Bayesian update |
 | `detection_sigma_m` | 25.0 | Gaussian sigma for positive detection update [m] |

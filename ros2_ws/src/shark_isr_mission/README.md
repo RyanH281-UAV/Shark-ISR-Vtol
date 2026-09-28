@@ -48,6 +48,10 @@ any ─low_battery─▶ RETURNING  (failsafe)
 | `search_length_m` | 0.0 | Along-shore strip extent [m]; 0 = circular area (ADR-018). Overridden per-mission by `CMD_START`'s own `search_length_m` when it is > 0 |
 | `search_width_m` | 120.0 | Cross-shore strip extent [m] |
 | `shore_bearing_rad` | 0.0 | ENU bearing of the shoreline [rad] (REP-103) |
+| `min_alt_above_home_m` | 10.0 | Lowest allowed transit/search height above home [m]; CMD_START is rejected below it |
+| `max_alt_above_home_m` | 120.0 | Highest allowed height above home [m] (CASA 400 ft ceiling); CMD_START is rejected above it |
+
+**Altitudes:** `CMD_START` takes AMSL. Mission converts once, using home AMSL = current AMSL − current height above home, and everything downstream works in height above home. `orbit_radius_m` is forwarded to guidance; 0 means guidance's default.
 
 ## Run in isolation
 
@@ -74,7 +78,7 @@ ros2 service call /mission_command shark_isr_interfaces/srv/MissionCommand "{com
 | Trigger | Action |
 |---|---|
 | `battery_fraction` < 0.20 | Application-level: calls SetGuidanceMode RETURN + AutopilotCommand RTL |
-| Arming timeout | Aborts start sequence → IDLE |
+| Arming timeout | Triggers RETURN (guidance RETURN + PX4 RTL), not IDLE — the code does this even though the aircraft may still be on the ground |
 | Transit timeout | Starts search without completing transit |
 | Node death / compute loss | PX4 detects lost OffboardControlMode heartbeat → PX4 RTL (hardware failsafe, ADR-003) |
 

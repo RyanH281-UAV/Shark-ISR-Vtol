@@ -128,6 +128,10 @@ class DetectorNode(Node):
 
     # ------------------------------------------------------------------ #
     # Sim mode
+    #
+    # Stands in for a real detector so the whole detection → gate → TRACK chain
+    # can run in SITL. The frame's pixels are ignored: each frame either
+    # continues a burst or, with probability mock_detection_prob, starts one.
 
     def _run_sim_detection(self, stamp) -> None:
         # A trigger starts a burst: the mock target stays "in view" for
@@ -217,6 +221,13 @@ class DetectorNode(Node):
         except Exception as exc:
             self.get_logger().error(f"Failed to initialise HailoRT: {exc}")
 
+    # Per-frame path in real mode: rgb8 Image → float [0,1] array
+    # (_decode_image) → letterbox to 640×640 (_letterbox) → HailoRT → decode
+    # boxes (_hailo_forward) → undo the letterbox so boxes are normalised to the
+    # ORIGINAL frame → geolocate → publish. The decode is the unfinished part
+    # (B08): the .hef emits raw YOLOv8 head tensors that need DFL box decoding +
+    # NMS on the CPU. A replacement must still return (bbox normalised to the
+    # original frame, confidence) pairs so nothing after it changes.
     def _run_hailo_detection(self, msg: Image) -> None:
         if self._hailo_infer is None:
             return

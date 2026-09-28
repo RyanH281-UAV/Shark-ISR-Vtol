@@ -30,6 +30,38 @@ Subscribes:
 
 Service server:
   set_guidance_mode  (SetGuidanceMode)    — called by shark_isr_mission
+
+How to read this file
+---------------------
+Everything happens in three callbacks and two timers:
+
+  _cb_vehicle      stores the latest VehicleState (position, attitude, AGL).
+  _cb_detection    feeds the confidence gate and the belief map; picks the
+                   candidate the orbit will centre on. Never changes phase.
+  _srv_set_mode    mission's commands: sets up an area/target and the phase.
+  _timer_update    (update_hz, 5 Hz) one setpoint per tick for the current
+                   phase — the only place a phase changes on its own
+                   (TRANSIT arrival, gate trigger, track lost).
+  _timer_publish_state (state_hz, 2 Hz) the SearchState summary.
+
+The pure maths lives in sibling modules with no ROS in them, so it can be
+unit-tested and reused: search_pattern (areas, lanes), bayesian_map (belief),
+strategies (where to go next), confidence_gate (when to commit to TRACK).
+
+Where to change things
+----------------------
+  a tuning number (lane spacing, gate thresholds, radii) → config/guidance.yaml
+  a new way to choose the next waypoint → a class in strategies.py with the
+      same next_waypoints() signature, added to STRATEGIES; select it with
+      `search_strategy`. No change needed here.
+  what "seen, nothing there" means → _update_search (null_observation call)
+  what TRACK flies → _update_track (the bridge turns TYPE_ORBIT into the
+      actual circle — see autopilot_bridge._orbit_setpoint_ned)
+  a new phase → SearchState PHASE_* constant, a branch in _timer_update and
+      _srv_set_mode, and the mission-side mapping. Interfaces first (ADR-004).
+
+Frames: every position here is ENU metres relative to home (x=East, y=North,
+z=Up). Only the autopilot package ever sees PX4's NED.
 """
 
 import math
@@ -58,11 +90,15 @@ class GuidanceNode(Node):
         # ── Parameters ───────────────────────────────────────────────────────
         self.declare_parameter('update_hz', 5.0)
         self.declare_parameter('state_hz', 2.0)
-        self.declare_parameter('strip_width_m', 60.0)
+        # Code defaults mirror config/guidance.yaml so a node started without the
+        # YAML (bare `ros2 run`, a unit test) flies the same geometry as a launch.
+        # 25 m lanes = the camera's ~31 m cross-track footprint at 30 m AGL with
+        # overlap (ADR-010); 12 m = the footprint radius credited as "looked at".
+        self.declare_parameter('strip_width_m', 25.0)
         self.declare_parameter('arrival_threshold_m', 15.0)
         self.declare_parameter('detection_confidence_threshold', 0.70)
         self.declare_parameter('orbit_radius_m', 50.0)
-        self.declare_parameter('footprint_radius_m', 35.0)
+        self.declare_parameter('footprint_radius_m', 12.0)
         self.declare_parameter('p_detection', 0.85)
         self.declare_parameter('detection_sigma_m', 25.0)
         self.declare_parameter('return_home_alt_m', 30.0)
@@ -85,7 +121,15 @@ class GuidanceNode(Node):
         self._strip_w = self.get_parameter('strip_width_m').value
         self._arrival_thresh = self.get_parameter('arrival_threshold_m').value
         self._det_conf_thresh = self.get_parameter('detection_confidence_threshold').value
-        self._orbit_r = self.get_parameter('orbit_radius_m').value
+        # Three orbit radii, kept separate so one mission's choice can't leak
+        # into the next (see _enter_track / MODE_ORBIT / MODE_IDLE):
+        #   _orbit_r_default — the YAML value, the fallback of last resort
+        #   _mission_orbit_r — this mission's radius for gate-entered tracks,
+        #                      from CMD_START via mission (0 there = use default)
+        #   _orbit_r         — the radius actually being flown right now
+        self._orbit_r_default = self.get_parameter('orbit_radius_m').value
+        self._mission_orbit_r = self._orbit_r_default
+        self._orbit_r = self._orbit_r_default
         self._footprint_r = self.get_parameter('footprint_radius_m').value
         self._p_det = self.get_parameter('p_detection').value
         self._det_sigma = self.get_parameter('detection_sigma_m').value
@@ -208,6 +252,11 @@ class GuidanceNode(Node):
     # ── Guidance update timer (5 Hz) ─────────────────────────────────────────
 
     def _timer_update(self) -> None:
+        # One tick = one decision. Each branch publishes exactly one
+        # GuidanceSetpoint (IDLE publishes none). The bridge re-sends the last
+        # setpoint to PX4 at 20 Hz, so 5 Hz here is plenty for waypoints and
+        # orbit centres; raising update_hz also speeds up the gate's decay,
+        # because gate_decay is subtracted per tick, not per second.
         if self._vehicle is None:
             return
 
@@ -247,6 +296,9 @@ class GuidanceNode(Node):
                      lat: float, lon: float) -> None:
         """Sustained τ crossing confirmed (ADR-016) — commit to the orbit."""
         self._orbit_centre = (det_e, det_n, self._search_alt)
+        # Always re-take the mission radius here: a previous commanded
+        # MODE_ORBIT may have left _orbit_r at some other value.
+        self._orbit_r = self._mission_orbit_r
         self._tracked_lat = lat
         self._tracked_lon = lon
         self._track_from_detection = True
@@ -398,6 +450,7 @@ class GuidanceNode(Node):
             self._strategy = None
             self._strategy_target = None
             self._threat_weights = None
+            self._mission_orbit_r = self._orbit_r_default
             self._set_phase(SearchState.PHASE_IDLE)
             response.accepted = True
 
@@ -423,6 +476,7 @@ class GuidanceNode(Node):
             self._search_length = request.search_length_m
             self._search_width = request.search_width_m
             self._search_bearing = request.shore_bearing_rad
+            self._take_mission_orbit_radius(request.orbit_radius_m)
             self._set_phase(SearchState.PHASE_TRANSIT)
             response.accepted = True
 
@@ -434,6 +488,7 @@ class GuidanceNode(Node):
                 response.reason = 'MODE_SEARCH needs search_radius_m > 0 or search_length_m > 0'
                 self.get_logger().error(response.reason)
                 return response
+            self._take_mission_orbit_radius(request.orbit_radius_m)
             sc = request.search_centre_enu_m
             self._start_search(
                 sc.x, sc.y,
@@ -448,7 +503,11 @@ class GuidanceNode(Node):
         elif mode == SetGuidanceMode.Request.MODE_ORBIT:
             oc = request.orbit_centre_enu_m
             self._orbit_centre = (oc.x, oc.y, oc.z)
-            self._orbit_r = request.orbit_radius_m
+            # 0 = "not supplied": fall back to the mission radius. Passing 0
+            # straight through used to reach the bridge as max(1.0, 0) — a 1 m
+            # orbit, i.e. the aircraft spinning on the spot.
+            self._orbit_r = (request.orbit_radius_m if request.orbit_radius_m > 0.0
+                             else self._mission_orbit_r)
             self._orbit_clockwise = request.orbit_clockwise
             # Commanded orbit, not gate-entered — the lost check must not
             # kick a MODE_ORBIT hold back to SEARCH.
@@ -538,6 +597,13 @@ class GuidanceNode(Node):
         self.get_logger().info(
             f'Search {verb} ({self._strategy_name}, {shape}): '
             f'centre=({centre_e:.1f}, {centre_n:.1f}) m ENU')
+
+    def _take_mission_orbit_radius(self, radius_m: float) -> None:
+        """Adopt the operator's tracking-orbit radius, carried by MODE_TRANSIT and
+        MODE_SEARCH in SetGuidanceMode.orbit_radius_m. 0 keeps the current value,
+        so a bare `ros2 service call` without it doesn't zero the orbit."""
+        if radius_m > 0.0:
+            self._mission_orbit_r = radius_m
 
     def _set_phase(self, phase: int) -> None:
         if self._phase in (SearchState.PHASE_SEARCH, SearchState.PHASE_TRACK):

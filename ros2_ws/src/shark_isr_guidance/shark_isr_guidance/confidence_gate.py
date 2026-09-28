@@ -15,6 +15,20 @@ Usage (guidance_node):
     gate.on_tick()            # every guidance update tick (update_hz)
     gate.triggered            # SEARCH → TRACK when True
     gate.lost                 # TRACK → SEARCH when True (target gone)
+
+Worked numbers with the defaults (tau 0.85, K 6, gain 0.12, decay 0.05),
+a 10 fps camera and a 5 Hz guidance tick — use these to reason about tuning:
+  - one detection at confidence 0.75 adds 0.12 × 0.75 = 0.09
+  - a continuous stream = 2 detections per tick = +0.18, minus 0.05 decay,
+    so the score climbs ~0.13 per tick: 7 ticks to reach tau, and the tick
+    that crosses it counts as the first of the 6 → TRACK on tick 12, i.e.
+    ~2.4 s of steady detections
+  - a 5-frame burst adds at most 0.45 → never reaches tau (T10 checks this)
+  - with no detections, a full score (1.0) decays to lost (0.25) in
+    (1.0 − 0.25) / 0.05 = 15 ticks = 3 s
+Raise gain or lower tau → commits faster but trusts noise more; raise K →
+more sustained evidence required; raise decay → forgets faster (both in
+SEARCH and when judging a TRACK lost).
 """
 
 

@@ -23,6 +23,10 @@ float32 search_radius_m         # [m]   circular search area radius —
 float32 transit_alt_amsl_m      # [m]   AMSL altitude for transit leg
 float32 search_alt_amsl_m       # [m]   AMSL altitude for search/loiter
                                 #       (AGL ≈ AMSL over open sea)
+                                # mission converts both to height above home
+                                # (AMSL − home AMSL) and rejects the command
+                                # if outside [min,max]_alt_above_home_m
+                                # (default 10–120 m). 0 → 30 m above home.
 float32 orbit_radius_m          # [m]   orbit radius when tracking a detection
                                 #       (0.0 → use parameter server default, typ. 50 m)
 

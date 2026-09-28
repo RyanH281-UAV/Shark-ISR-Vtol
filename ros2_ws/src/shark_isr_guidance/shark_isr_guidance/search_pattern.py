@@ -119,6 +119,9 @@ def boustrophedon_strip(
     return waypoints
 
 
+# NOTE: not called by guidance_node yet — only by the unit tests. It is meant
+# as a pre-flight check (can this strip be patrolled within revisit_bound_s on
+# this battery?) and is the natural thing for a mission-planning tool to call.
 def check_feasibility(
     length_m: float,
     width_m: float,

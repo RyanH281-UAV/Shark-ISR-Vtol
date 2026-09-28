@@ -13,6 +13,38 @@ Responsibilities (ADR-002, ADR-003, ADR-007, ADR-008):
 Failsafe: if this node dies or the link drops, PX4 detects the lost heartbeat
 and falls back to its own RTL/Hold failsafe — the companion is never
 safety-critical (ADR-003).
+
+How Offboard works (read this before changing anything here)
+------------------------------------------------------------
+PX4 only obeys an external computer while it is in Offboard mode, and it only
+stays in Offboard while it keeps receiving OffboardControlMode messages. Stop
+sending them for COM_OF_LOSS_T seconds (5 s in SITL) and PX4 leaves Offboard
+by itself and flies its own failsafe. That heartbeat is the whole safety
+design: this node dying, the Pi crashing and the cable falling out all look
+the same to PX4.
+
+  1. mission calls autopilot_command ARM, then OFFBOARD.
+  2. OFFBOARD only sets _offboard_active; the 20 Hz timer starts streaming.
+  3. After 1 s of stream (PX4 rejects the switch without one) the timer sends
+     the OFFBOARD mode command, retrying each second until PX4's own
+     VehicleStatus reports nav_state OFFBOARD.
+  4. From then on each tick sends OffboardControlMode + TrajectorySetpoint,
+     built from the latest GuidanceSetpoint. No fresh setpoint for
+     setpoint_timeout_s → a zero-velocity hold instead of an old target.
+  5. HOLD / RTL / LAND clear _offboard_active: streaming stops and PX4 flies
+     that mode itself.
+
+Timers: _timer_offboard_heartbeat (offboard_hz) and _timer_vehicle_state
+(vehicle_state_hz). Everything else is callbacks that only store the latest
+message.
+
+Where to change things
+----------------------
+  a PX4 topic → the subscriptions in __init__ and _timer_vehicle_state
+  how a setpoint type maps to PX4 → the if/elif at the end of the heartbeat
+  the orbit geometry → _orbit_setpoint_ned (lead angle _ORBIT_LEAD_RAD)
+  a new command → AutopilotCommand.srv constant + a branch in
+      _srv_autopilot_command (PX4 mode numbers are listed above _send_mode)
 """
 
 import math
@@ -49,6 +81,9 @@ from .frame_transforms import (
 )
 
 
+# QoS = the delivery contract between a publisher and a subscriber. DDS only
+# connects the two if their contracts are compatible, and a mismatch fails
+# SILENTLY (no error, just no messages), which is why these are spelled out.
 # QoS profile that matches PX4's uXRCE-DDS publishers (best-effort, volatile).
 PX4_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,

@@ -126,9 +126,9 @@ No other package handles this conversion.
 | `search_lat_deg` | `float64` | deg WGS-84 | Search area centre latitude (START only) |
 | `search_lon_deg` | `float64` | deg WGS-84 | Search area centre longitude (START only) |
 | `search_radius_m` | `float32` | m | Circular search area radius — used only when `search_length_m <= 0` (START only) |
-| `transit_alt_amsl_m` | `float32` | m AMSL | Transit altitude (START only) |
-| `search_alt_amsl_m` | `float32` | m AMSL | Search/loiter altitude (START only) |
-| `orbit_radius_m` | `float32` | m | Orbit radius on detection; 0 = default (START only) |
+| `transit_alt_amsl_m` | `float32` | m AMSL | Transit altitude (START only). Mission converts to height above home and rejects outside 10–120 m; 0 = 30 m above home |
+| `search_alt_amsl_m` | `float32` | m AMSL | Search/loiter altitude (START only). Same conversion and envelope |
+| `orbit_radius_m` | `float32` | m | Orbit radius on detection; 0 = guidance's `orbit_radius_m` default (START only). Forwarded to guidance on TRANSIT/SEARCH |
 | `search_length_m` | `float32` | m | Along-shore strip extent; `<= 0` keeps the circular area above (ADR-018, START only) |
 | `search_width_m` | `float32` | m | Cross-shore strip extent (START only) |
 | `shore_bearing_rad` | `float32` | rad | ENU bearing of the shoreline, REP-103 (START only) |
@@ -160,7 +160,7 @@ No other package handles this conversion.
 | `search_width_m` | `float32` | m | Cross-shore strip extent (SEARCH) |
 | `shore_bearing_rad` | `float32` | rad | ENU bearing of the shoreline, REP-103 (SEARCH) |
 | `orbit_centre_enu_m` | `geometry_msgs/Point` | m ENU | Orbit centre (ORBIT) |
-| `orbit_radius_m` | `float32` | m | Orbit radius (ORBIT) |
+| `orbit_radius_m` | `float32` | m | Orbit radius (ORBIT; 0 = mission radius). Also read by TRANSIT/SEARCH as the radius for gate-entered tracks (0 = keep current) |
 | `orbit_clockwise` | `bool` | — | CW from above; false = CCW default |
 
 **Response:**

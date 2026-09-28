@@ -96,3 +96,56 @@ def test_circle_area_has_no_threat_weights(node):
     shoreline — threat weighting must stay off for it."""
     node._start_search(0.0, 0.0, 100.0, 30.0)
     assert node._threat_weights is None
+
+
+# ── Orbit radius plumbing (2026-09-28) ─────────────────────────────────────────
+# CMD_START.orbit_radius_m used to stop at the mission node; every gate-entered
+# TRACK flew guidance's YAML 50 m, and a commanded MODE_ORBIT permanently
+# overwrote the radius for later tracks. These pin the fixed behaviour.
+
+def _mode(node, mode, **fields):
+    from shark_isr_interfaces.srv import SetGuidanceMode
+    req = SetGuidanceMode.Request()
+    req.mode = mode
+    for k, v in fields.items():
+        setattr(req, k, v)
+    return node._srv_set_mode(req, SetGuidanceMode.Response())
+
+
+def test_gate_track_uses_mission_orbit_radius(node):
+    from shark_isr_interfaces.srv import SetGuidanceMode
+    _mode(node, SetGuidanceMode.Request.MODE_SEARCH,
+          search_radius_m=100.0, search_alt_enu_z_m=30.0, orbit_radius_m=80.0)
+    node._enter_track(10.0, 10.0, -31.9, 115.7)
+    assert node._orbit_r == 80.0
+
+
+def test_commanded_orbit_radius_does_not_leak_into_next_track(node):
+    from shark_isr_interfaces.srv import SetGuidanceMode
+    _mode(node, SetGuidanceMode.Request.MODE_SEARCH,
+          search_radius_m=100.0, search_alt_enu_z_m=30.0, orbit_radius_m=80.0)
+    _mode(node, SetGuidanceMode.Request.MODE_ORBIT, orbit_radius_m=20.0)
+    assert node._orbit_r == 20.0
+    node._enter_track(10.0, 10.0, -31.9, 115.7)   # later gate-entered track
+    assert node._orbit_r == 80.0
+
+
+def test_commanded_orbit_with_zero_radius_uses_mission_radius(node):
+    """0 used to reach the bridge as max(1.0, 0) — a 1 m orbit."""
+    from shark_isr_interfaces.srv import SetGuidanceMode
+    _mode(node, SetGuidanceMode.Request.MODE_ORBIT, orbit_radius_m=0.0)
+    assert node._orbit_r == node._orbit_r_default
+
+
+def test_idle_resets_mission_orbit_radius(node):
+    from shark_isr_interfaces.srv import SetGuidanceMode
+    _mode(node, SetGuidanceMode.Request.MODE_TRANSIT, orbit_radius_m=80.0)
+    _mode(node, SetGuidanceMode.Request.MODE_IDLE)
+    assert node._mission_orbit_r == node._orbit_r_default
+
+
+def test_code_defaults_match_guidance_yaml(node):
+    """No YAML is loaded in this fixture, so these are the declare_parameter
+    defaults — they must equal config/guidance.yaml (25 m lanes, 12 m footprint)."""
+    assert node._strip_w == 25.0
+    assert node._footprint_r == 12.0

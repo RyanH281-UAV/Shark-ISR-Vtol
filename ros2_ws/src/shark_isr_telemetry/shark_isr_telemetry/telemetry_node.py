@@ -22,7 +22,10 @@ Publications
 ------------
   /telemetry_summary  std_msgs/String  — 1-Hz human-readable status line
 
-No GCS RF transport: that is the autopilot bridge's responsibility.
+No RF/GCS transport here, and none in the autopilot bridge either: the ground
+link is QGroundControl talking MAVLink straight to the Pixhawk over its
+telemetry radio (ADR-015), bypassing the companion. /telemetry_summary is only
+visible to something on the same ROS 2 network.
 """
 
 import json

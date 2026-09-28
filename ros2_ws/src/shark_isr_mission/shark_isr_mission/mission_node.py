@@ -14,6 +14,30 @@ This node is purely a coordinator — it never computes trajectories.  It calls
 AutopilotCommand and SetGuidanceMode services in response to MissionCommand
 requests and state changes, and monitors VehicleState + SearchState for
 automated transitions and failsafes.
+
+Two phase machines, on purpose
+------------------------------
+Mission has its own MissionPhase (it adds STARTING, PAUSED and LANDED, which
+guidance has no reason to know about). For TRANSIT/SEARCH/TRACK guidance is
+the authority: mission copies guidance's phase from SearchState
+(_cb_search_state) instead of guessing, and only commands phase changes
+through SetGuidanceMode.
+
+Why the callback group and MultiThreadedExecutor
+------------------------------------------------
+Every service call here is call_async with a done-callback — never a blocking
+call. A blocking call made from inside a callback on a single-threaded
+executor waits for a reply that the same (busy) thread would have to
+deliver, i.e. it deadlocks. The ReentrantCallbackGroup plus the
+MultiThreadedExecutor in main() let replies arrive while other callbacks run.
+
+Where to change things
+----------------------
+  thresholds and timeouts → config/mission.yaml
+  a new operator command → MissionCommand.srv constant + a branch in
+      _srv_mission_command
+  a new failsafe → a _check_* method called from _timer_update; end it with
+      _trigger_return() so guidance and PX4 are both told
 """
 
 import math
@@ -72,6 +96,12 @@ class MissionNode(Node):
         self.declare_parameter('search_length_m', 0.0)
         self.declare_parameter('search_width_m', 120.0)
         self.declare_parameter('shore_bearing_rad', 0.0)
+        # Altitude envelope, as height above home (ENU z). CMD_START altitudes
+        # are AMSL; they are converted and then checked against this band so a
+        # typo (or AMSL-vs-AGL confusion) is rejected on the ground instead of
+        # flown. 120 m = the CASA standard-operating ceiling (400 ft AGL).
+        self.declare_parameter('min_alt_above_home_m', 10.0)
+        self.declare_parameter('max_alt_above_home_m', 120.0)
 
         self._low_batt_thresh = self.get_parameter('low_battery_threshold').value
         self._arm_timeout = self.get_parameter('arm_timeout_s').value
@@ -80,6 +110,8 @@ class MissionNode(Node):
         self._default_search_length = self.get_parameter('search_length_m').value
         self._default_search_width = self.get_parameter('search_width_m').value
         self._default_shore_bearing = self.get_parameter('shore_bearing_rad').value
+        self._min_alt = self.get_parameter('min_alt_above_home_m').value
+        self._max_alt = self.get_parameter('max_alt_above_home_m').value
 
         self.add_on_set_parameters_callback(self._on_params_change)
 
@@ -93,9 +125,12 @@ class MissionNode(Node):
         self._search_lat: float = 0.0
         self._search_lon: float = 0.0
         self._search_radius: float = 200.0
+        # Heights here are ENU z = metres ABOVE HOME, already converted from the
+        # AMSL values in CMD_START (see _amsl_to_height_above_home).
         self._transit_alt: float = 50.0
         self._search_alt: float = 50.0
-        self._orbit_radius: float = 50.0
+        # 0 = "use guidance's own orbit_radius_m" — guidance owns the default.
+        self._orbit_radius: float = 0.0
         self._search_length: float = 0.0    # 0 = circle; ADR-012/ADR-018 strip
         self._search_width: float = 0.0
         self._shore_bearing: float = 0.0
@@ -226,13 +261,25 @@ class MissionNode(Node):
                 response.current_phase = self._guidance_phase()
                 return response
 
+            # Altitudes first: they need a valid position (to find home's AMSL)
+            # and can reject the whole command, so nothing is stored until
+            # they pass.
+            heights, reason = self._start_altitudes(
+                request.transit_alt_amsl_m, request.search_alt_amsl_m)
+            if heights is None:
+                self.get_logger().error(f'CMD_START rejected: {reason}')
+                response.accepted = False
+                response.reason = reason
+                response.current_phase = self._guidance_phase()
+                return response
+            self._transit_alt, self._search_alt = heights
+
             self._search_lat = request.search_lat_deg
             self._search_lon = request.search_lon_deg
             self._search_radius = request.search_radius_m or 200.0
-            # Altitude defaults follow ADR-010 (30 m AGL patrol).
-            self._transit_alt = request.transit_alt_amsl_m or 30.0
-            self._search_alt = request.search_alt_amsl_m or 30.0
-            self._orbit_radius = request.orbit_radius_m or self._orbit_radius
+            # Per-mission, not sticky: 0 hands the choice back to guidance's
+            # default instead of silently reusing the previous mission's radius.
+            self._orbit_radius = max(0.0, request.orbit_radius_m)
             # Strip area: only when the request itself asks for one, else the
             # node's configured preset (which defaults to 0 = circle).
             if request.search_length_m > 0:
@@ -353,6 +400,9 @@ class MissionNode(Node):
         req.search_length_m = self._search_length
         req.search_width_m = self._search_width
         req.shore_bearing_rad = self._shore_bearing
+        # Carried so guidance knows the orbit radius for a gate-entered TRACK;
+        # before this, CMD_START.orbit_radius_m was stored here and never sent.
+        req.orbit_radius_m = self._orbit_radius
         future = self._cli_gd.call_async(req)
         future.add_done_callback(self._on_transit_response)
 
@@ -378,6 +428,7 @@ class MissionNode(Node):
         req.search_length_m = self._search_length
         req.search_width_m = self._search_width
         req.shore_bearing_rad = self._shore_bearing
+        req.orbit_radius_m = self._orbit_radius
         future = self._cli_gd.call_async(req)
         future.add_done_callback(
             lambda f: self.get_logger().info(
@@ -421,6 +472,42 @@ class MissionNode(Node):
         if self._search_state is not None:
             return self._search_state.phase
         return SearchState.PHASE_IDLE
+
+    # Height above home used when CMD_START leaves an altitude at 0 (ADR-010's
+    # 30 m patrol altitude). Already home-relative, so it is not converted.
+    _DEFAULT_ALT_ABOVE_HOME_M = 30.0
+
+    def _start_altitudes(
+        self, transit_amsl_m: float, search_amsl_m: float,
+    ) -> tuple[tuple[float, float] | None, str]:
+        """Convert CMD_START's AMSL altitudes to heights above home and range-check.
+
+        Returns ((transit_z, search_z), '') or (None, reason). Everything below
+        the mission layer (guidance setpoints, the bridge) works in ENU z =
+        metres above home, so AMSL must be converted exactly once, here.
+        """
+        v = self._vehicle
+        if v is None or not v.position_valid:
+            return None, ('No valid vehicle position yet — cannot place the '
+                          'search area; retry once GPS is valid')
+        # The bridge leaves lat/lon/AMSL at 0.0 until PX4's global position
+        # arrives; converting against that would place home at sea level
+        # regardless of where it really is.
+        if v.latitude_deg == 0.0 and v.longitude_deg == 0.0:
+            return None, 'No global position (lat/lon) yet — retry once GPS is valid'
+        # Home's AMSL = where we are now (AMSL) minus how high above home we are.
+        # Works whether CMD_START is sent on the ground (z ~ 0) or mid-flight.
+        home_amsl = v.altitude_amsl_m - v.position_enu_m.z
+        heights = []
+        for name, amsl in (('transit', transit_amsl_m), ('search', search_amsl_m)):
+            z = (amsl - home_amsl) if amsl else self._DEFAULT_ALT_ABOVE_HOME_M
+            if not self._min_alt <= z <= self._max_alt:
+                return None, (
+                    f'{name} altitude {amsl:.1f} m AMSL is {z:.1f} m above home '
+                    f'(home {home_amsl:.1f} m AMSL); allowed '
+                    f'{self._min_alt:.0f}-{self._max_alt:.0f} m above home')
+            heights.append(z)
+        return (heights[0], heights[1]), ''
 
     def _latlondelta_to_enu(self, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         """Absolute ENU (east, north) of (lat_deg, lon_deg).
