@@ -1,8 +1,8 @@
 # Shark-ISR VTOL — Detection-Gated Guidance Autonomy
 
 > **The aircraft transitions SEARCH → TRACK on its own.**
-> A ROS 2 guidance state machine flies a tri-tiltrotor VTOL, gated on onboard detection
-> confidence — no video downlink in the decision loop, no operator watching a screen.
+> A ROS 2 guidance state machine flies a tiltrotor VTOL, gated on onboard detection
+> confidence. Replacing the need for an operator constantly watching the drone's camera transmission screen.
 > The application is shark monitoring; the engineering is persistent ISR autonomy.
 
 ![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-1c7ed6)
