@@ -17,6 +17,15 @@ See ADR-002, ADR-003, ADR-007, ADR-008.
   (client: `shark_isr_mission`).
 - Stream OffboardControlMode heartbeat so PX4 holds Offboard mode.
 
+**Height above home.** PX4's local z is relative to the EKF origin, which is not
+necessarily home (GPS lock in one place, launch from another). The bridge shifts
+`VehicleState.position_enu_m.z` and `agl_m` by home's z and shifts setpoint z back
+before sending, so everything above this package works in metres above home. Disarmed,
+home is the vehicle's own position (PX4 does the same: home follows a landed vehicle and
+is reset at arming); armed, it is latched and updated from `/fmu/out/home_position`.
+PX4 publishes that topic only on change, so a bridge restarted mid-flight has no home
+and holds `position_valid` false until PX4 republishes it (ADR-019).
+
 **Not** responsible for: inner loop, attitude control, tilt transition (PX4 owns those).
 
 ## Subscribed Topics
@@ -28,6 +37,8 @@ See ADR-002, ADR-003, ADR-007, ADR-008.
 | `/fmu/out/vehicle_global_position` | `px4_msgs/VehicleGlobalPosition` | PX4 |
 | `/fmu/out/battery_status` | `px4_msgs/BatteryStatus` | PX4 |
 | `/fmu/out/vtol_vehicle_status` | `px4_msgs/VtolVehicleStatus` | PX4 |
+| `/fmu/out/vehicle_status_v1` | `px4_msgs/VehicleStatus` | PX4 (arming/nav state) |
+| `/fmu/out/home_position` | `px4_msgs/HomePosition` | PX4 (re-zeroes z at home) |
 | `guidance_setpoint` | `shark_isr_interfaces/GuidanceSetpoint` | `shark_isr_guidance` (ENU/FLU) |
 
 ## Published Topics

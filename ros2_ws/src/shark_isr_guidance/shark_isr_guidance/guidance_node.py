@@ -81,6 +81,19 @@ from .confidence_gate import ConfidenceGate
 from .search_pattern import SearchRegion, Waypoint, distance_to_waypoint
 from .strategies import STRATEGIES, LawnmowerStrategy, threat_weights_from_shore
 
+
+def detection_sigma_m(geo_valid: bool, position_std_m: float,
+                      sigma_min_m: float, fallback_m: float) -> float:
+    """Gaussian sigma for a positive-detection map update (ADR-021).
+
+    Geolocated: perception's propagated 1-sigma, floored at sigma_min_m — that
+    estimate covers AGL error only, not GPS/attitude/timing error or the cell size.
+    Not geolocated (placed at the vehicle) or a non-positive/NaN std: fallback_m.
+    """
+    if geo_valid and position_std_m > 0.0:  # NaN fails this comparison too
+        return max(position_std_m, sigma_min_m)
+    return fallback_m
+
 class GuidanceNode(Node):
     """Guidance layer: search pattern, Bayesian map, detection-triggered orbit."""
 
@@ -101,6 +114,7 @@ class GuidanceNode(Node):
         self.declare_parameter('footprint_radius_m', 12.0)
         self.declare_parameter('p_detection', 0.85)
         self.declare_parameter('detection_sigma_m', 25.0)
+        self.declare_parameter('detection_sigma_min_m', 5.0)
         self.declare_parameter('return_home_alt_m', 30.0)
         # Search strategy (ADR-012)
         self.declare_parameter('search_strategy', 'persistent_patrol')
@@ -133,6 +147,7 @@ class GuidanceNode(Node):
         self._footprint_r = self.get_parameter('footprint_radius_m').value
         self._p_det = self.get_parameter('p_detection').value
         self._det_sigma = self.get_parameter('detection_sigma_m').value
+        self._det_sigma_min = self.get_parameter('detection_sigma_min_m').value
         self._return_alt = self.get_parameter('return_home_alt_m').value
         self._strategy_name = self.get_parameter('search_strategy').value
         self._revisit_bound_s = self.get_parameter('revisit_bound_s').value
@@ -239,7 +254,9 @@ class GuidanceNode(Node):
             lat, lon = self._vehicle.latitude_deg, self._vehicle.longitude_deg
 
         if self._bayes_map is not None:
-            self._bayes_map.positive_detection(det_e, det_n, self._det_sigma)
+            sigma = detection_sigma_m(msg.geo_valid, msg.position_std_m,
+                                      self._det_sigma_min, self._det_sigma)
+            self._bayes_map.positive_detection(det_e, det_n, sigma)
 
         self._gate.on_detection(msg.confidence)
         self._candidate = (det_e, det_n, lat, lon)

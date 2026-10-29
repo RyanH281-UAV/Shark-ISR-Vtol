@@ -59,6 +59,7 @@ from std_msgs.msg import Header
 # PX4 messages (uXRCE-DDS)
 from px4_msgs.msg import (
     BatteryStatus,
+    HomePosition,
     OffboardControlMode,
     TrajectorySetpoint,
     VehicleAttitude,
@@ -144,6 +145,13 @@ class AutopilotBridge(Node):
         self._battery: BatteryStatus | None = None
         self._vtol_status: VtolVehicleStatus | None = None
         self._vehicle_status: VehicleStatus | None = None
+        # PX4 local z is relative to the EKF origin, not home. VehicleState
+        # promises "ENU z = metres above home", so z is shifted by home's NED z
+        # on the way out and back on the way in. Disarmed, home is wherever the
+        # vehicle is (PX4 moves home with a landed vehicle and resets it at
+        # arming); armed, it stays latched, updated by /fmu/out/home_position.
+        # None only when the bridge starts mid-flight before PX4 republishes home.
+        self._home_z_ned: float | None = None
         self._guidance_setpoint: GuidanceSetpoint | None = None
         self._last_setpoint_time: rclpy.time.Time | None = None
         self._offboard_active = False              # streaming requested by mission
@@ -169,6 +177,11 @@ class AutopilotBridge(Node):
         self.create_subscription(
             VehicleStatus, '/fmu/out/vehicle_status_v1',
             self._cb_status, PX4_STATUS_QOS)
+        # Published only when home changes (arming, takeoff, DO_SET_HOME) and
+        # PX4's writer keeps no history, so a late subscriber misses earlier sets.
+        self.create_subscription(
+            HomePosition, '/fmu/out/home_position',
+            self._cb_home, PX4_STATUS_QOS)
 
         # ── PX4 publishers ───────────────────────────────────────────────────
         # High-rate streams use best-effort (freshest-wins, matches PX4 reader QoS).
@@ -224,6 +237,14 @@ class AutopilotBridge(Node):
             self.get_logger().info(
                 f'PX4 status: arm={msg.arming_state} nav={msg.nav_state} '
                 f'(armed={self._px4_is_armed()} offboard={self._px4_nav_offboard()})')
+
+    def _cb_home(self, msg: HomePosition) -> None:
+        if not msg.valid_lpos:
+            return
+        if self._home_z_ned != msg.z:
+            self.get_logger().info(
+                f'PX4 home set: {msg.alt:.2f} m AMSL, {-msg.z:.2f} m above EKF origin')
+        self._home_z_ned = float(msg.z)
 
     def _px4_is_armed(self) -> bool:
         s = self._vehicle_status
@@ -317,7 +338,7 @@ class AutopilotBridge(Node):
                 sp.position_enu_m.y,
                 sp.position_enu_m.z,
             )
-            tsp.position = [x_ned, y_ned, z_ned]
+            tsp.position = [x_ned, y_ned, z_ned + (self._home_z_ned or 0.0)]
             tsp.velocity = [float('nan'), float('nan'), float('nan')]
             tsp.yaw = yaw_enu_to_ned(sp.yaw_rad) if not math.isnan(sp.yaw_rad) else float('nan')
 
@@ -366,6 +387,7 @@ class AutopilotBridge(Node):
             sp.position_enu_m.y,
             sp.position_enu_m.z,
         )
+        cz_ned += self._home_z_ned or 0.0  # home-relative → EKF-origin-relative
         radius = max(1.0, sp.orbit_radius_m)
 
         lp = self._local_pos
@@ -396,9 +418,14 @@ class AutopilotBridge(Node):
         lp = self._local_pos
         att = self._attitude
 
+        # Height above home, not above the EKF origin (see _home_z_ned).
+        if not self._px4_is_armed() and lp.z_valid:
+            self._home_z_ned = float(lp.z)
+        home_z = self._home_z_ned or 0.0
+
         # Position (NED → ENU)
         if lp.xy_valid:
-            ex, ey, ez = ned_to_enu(float(lp.x), float(lp.y), float(lp.z))
+            ex, ey, ez = ned_to_enu(float(lp.x), float(lp.y), float(lp.z) - home_z)
             vs.position_enu_m = Point(x=ex, y=ey, z=ez)
             vs.position_h_std_m = float(lp.eph)
         else:
@@ -429,7 +456,7 @@ class AutopilotBridge(Node):
             vs.agl_m = lp.dist_bottom
             vs.agl_valid = True
         elif self._global_pos is not None and lp.z_valid:
-            vs.agl_m = -lp.z  # approx AGL over sea = altitude above home
+            vs.agl_m = home_z - lp.z  # approx AGL over sea = altitude above home
             vs.agl_valid = True
         else:
             vs.agl_m = 0.0
@@ -452,7 +479,14 @@ class AutopilotBridge(Node):
         # Status flags (from PX4 VehicleStatus — actual arming/nav state)
         vs.armed = self._px4_is_armed()
         vs.offboard_active = self._px4_nav_offboard()
-        vs.position_valid = lp.xy_valid
+        # Without home, z would silently be height above the EKF origin; report
+        # the position invalid instead.
+        vs.position_valid = lp.xy_valid and self._home_z_ned is not None
+        if lp.xy_valid and self._home_z_ned is None:
+            self.get_logger().error(
+                'No home altitude (bridge restarted in flight, or z invalid) — '
+                'position_valid held false until PX4 republishes home_position',
+                throttle_duration_sec=5.0)
 
         self._pub_vehicle_state.publish(vs)
 

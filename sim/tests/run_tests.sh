@@ -15,7 +15,7 @@
 #
 #  Usage:
 #    source ros2_ws/install/setup.bash
-#    ./sim/tests/run_tests.sh           # run all T06–T11
+#    ./sim/tests/run_tests.sh           # run all T06–T12
 #    ./sim/tests/run_tests.sh t06       # run single test
 #    ./sim/tests/run_tests.sh t06 t08   # run subset
 #
@@ -26,6 +26,7 @@
 #    t09  Low battery failsafe             (full stack)
 #    t10  End-to-end mission rehearsal     (full stack, ~90s)
 #    t11  Perception pipeline → TRACK      (full stack + perception, ~60s)
+#    t12  z = height above home (ADR-019)  (full stack, ~120s)
 # =============================================================================
 set -euo pipefail
 
@@ -39,8 +40,9 @@ declare -A TESTS=(
     [t09]="t09_low_battery_failsafe.py"
     [t10]="t10_e2e_rehearsal.py"
     [t11]="t11_perception_pipeline.py"
+    [t12]="t12_home_offset.py"
 )
-ALL_ORDER=(t06 t07 t08 t09 t10 t11)
+ALL_ORDER=(t06 t07 t08 t09 t10 t11 t12)
 
 run_test() {
     local key="$1"

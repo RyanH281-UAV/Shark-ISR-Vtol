@@ -63,6 +63,31 @@ degrades to an autopilot-handled failsafe (Position mode in SITL today; RTL once
 
 ---
 
+## Navigation
+
+![Navigation flow](docs/system_map/diagrams/navigation-flow.drawio.svg)
+
+Three questions, three owners: **where am I** (PX4 EKF2 - we consume it, never estimate),
+**where do I go next** (`shark_isr_guidance`), **where is the target** (pinhole geolocation in
+`shark_isr_perception`). What guidance actually does today, stated plainly:
+
+| Piece | Current implementation | Honest limit |
+|---|---|---|
+| Belief | Bayesian grid, 5 m cells, log-probability | **Flat prior** - every cell starts at 1/N; no habitat or sighting data |
+| "Looked, saw nothing" | In-footprint cells × (1 − 0.85), renormalise | Pd = 0.85 is assumed, not measured |
+| Detection | Gaussian likelihood around the geolocated point, σ = the detection's own `position_std_m` floored at 5 m (ADR-021) | Perception's std models AGL error only; the 5 m floor is a guess until flight logs measure real scatter |
+| Target motion | Every cell re-grows toward the flat prior over time | One global rate, not a movement model |
+| Value | Shoreline threat weight (exponential falloff offshore) multiplied in at selection | A naive heuristic, kept separate from belief |
+| Planner | **One step ahead, greedy**: fly to the single best cell (threat × probability); if any cell is staler than 300 s, fly to the stalest instead | Ignores path cost, energy, turn radius and wind; can zig-zag |
+| Alternatives | `lawnmower` (fixed boustrophedon), `bayesian_greedy` (pure peak-chasing) | Config switch, same belief map |
+
+**Next (ideas, not built):** N1 - a habitat-informed prior from the literature (depth, sea
+temperature, turbidity, bait fish, sighting history) to replace the flat map; N2 - a rollout
+planner that scores multi-step paths by detection value per joule instead of picking one cell at
+a time.
+
+---
+
 ## Detector
 
 YOLOv8n fine-tuned on 3,261 aerial images from four Roboflow datasets, compiled to a Hailo `.hef`
@@ -213,6 +238,7 @@ converted from AMSL to height above home) — all pass. The table figures are fr
 | `training/runs/detect/` | Training artifacts: curves, confusion matrix, detection previews |
 | `docs/` | Architecture, decisions (ADR-001–018), build plan, platform reference |
 | `docs/sitl_runs/` | Committed SITL console output, one file per session |
+| `docs/system_map/diagrams/` | Subsystem diagrams (draw.io-editable SVG): system, autonomy, mission phases, ground links, power, data, Pi boundary, airframe, navigation |
 
 ---
 

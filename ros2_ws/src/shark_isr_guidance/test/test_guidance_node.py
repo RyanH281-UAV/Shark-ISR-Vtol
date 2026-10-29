@@ -149,3 +149,12 @@ def test_code_defaults_match_guidance_yaml(node):
     defaults — they must equal config/guidance.yaml (25 m lanes, 12 m footprint)."""
     assert node._strip_w == 25.0
     assert node._footprint_r == 12.0
+
+
+def test_detection_sigma_uses_geolocation_std_with_floor():
+    from shark_isr_guidance.guidance_node import detection_sigma_m
+    assert detection_sigma_m(True, 8.0, 5.0, 25.0) == 8.0      # own std used
+    assert detection_sigma_m(True, 2.3, 5.0, 25.0) == 5.0      # floored
+    assert detection_sigma_m(False, 8.0, 5.0, 25.0) == 25.0    # not geolocated
+    assert detection_sigma_m(True, 0.0, 5.0, 25.0) == 25.0     # invalid std
+    assert detection_sigma_m(True, float('nan'), 5.0, 25.0) == 25.0

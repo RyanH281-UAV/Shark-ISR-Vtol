@@ -71,7 +71,14 @@ guidance_node:
     # Probability of detecting a shark when it is inside the sensor footprint.
     p_detection: 0.85
 
-    # Standard deviation of detection position uncertainty for Gaussian map update [m].
+    # Gaussian sigma for the positive-detection map update (ADR-021).
+    # Geolocated detections use their own Detection.position_std_m, floored at
+    # detection_sigma_min_m: perception's estimate is AGL error only (~2.3 m at
+    # 30 m AGL) and omits GPS (~2-3 m), attitude and timing error and the 5 m cell.
+    # Raise the floor if flight logs show geolocation scatter wider than this.
+    detection_sigma_min_m: 5.0
+    # Fallback sigma when a detection is NOT geolocated (geo_valid false): it is
+    # placed at the vehicle position, so the target is somewhere in the footprint.
     detection_sigma_m: 25.0
 
     # Return-to-home altitude in ENU z [m].

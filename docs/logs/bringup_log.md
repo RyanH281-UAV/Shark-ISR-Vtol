@@ -2,6 +2,25 @@
 
 > Dated entries per `HARDWARE_BRINGUP.md` ground rule 5. Newest on top.
 
+## 2026-09-29 — Airframe-side progress (B00, B06, B11, B14, B16 partial)
+
+**Result: progress, no gate closed.** Reported by the builder:
+
+- **Servos** bench-tested (B14, partial).
+- **Motors** working and bench-tested (B14, partial).
+- **PDB** wired (B16, partial — first part of the power loom).
+- **Pi 5 V regulator** fitted as a separate supply from the Pixhawk's; untested (B04–B06).
+- **Pixhawk** tested and verified, powered through the PDB (B06, B11 partial). PX4 flashed
+  from QGC, latest stable, believed v1.16.x — exact version to confirm with `ver all`.
+- **Airframe** fully printed and partially assembled: centre section with wing panels and nose
+  fitted (as in the 2026-08 photo); V-tail and tilt-motor mounts still to fit (B00, partial).
+
+To close these gates later, record: servo-to-surface direction and tilt travel on the assembled
+airframe, ESC calibration and motor rotation direction via QGC actuator test (B14); PX4 version,
+airframe/actuator config and exported params (B11); remaining loom plus continuity/polarity
+check (B16). Measurements (servo current, motor current at bench throttle) not logged for
+this session.
+
 ## 2026-08-13 — B07b (container gates)
 
 **Result: 3 of 4 PASS.** `docker build` ✓ · in-container `colcon build` ✓ · Hailo device

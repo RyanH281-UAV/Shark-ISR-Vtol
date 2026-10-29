@@ -63,7 +63,8 @@ Produces `GuidanceSetpoint` — consumed by `shark_isr_autopilot`.
 | `orbit_radius_m` | 50.0 | Default orbit radius when tracking [m]. Overridden per mission by `SetGuidanceMode.orbit_radius_m` on TRANSIT/SEARCH (from `CMD_START`); reset on IDLE |
 | `footprint_radius_m` | 12.0 | Sensor footprint half-width for Bayesian update [m] |
 | `p_detection` | 0.85 | P(detect | shark in footprint) for Bayesian update |
-| `detection_sigma_m` | 25.0 | Gaussian sigma for positive detection update [m] |
+| `detection_sigma_min_m` | 5.0 | Floor on a geolocated detection's own `position_std_m` for the Gaussian map update [m] (ADR-021) |
+| `detection_sigma_m` | 25.0 | Gaussian sigma for a detection that is *not* geolocated (placed at the vehicle) [m] |
 | `return_home_alt_m` | 30.0 | ENU z altitude for return-to-home leg [m] |
 
 ## Run in isolation (mock inputs)

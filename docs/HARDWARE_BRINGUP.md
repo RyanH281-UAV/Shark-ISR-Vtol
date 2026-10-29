@@ -18,6 +18,12 @@
 > `/camera/image_raw`. Root cause of the 2026-08-04 corruption incident confirmed:
 > counterfeit/fake-capacity SD cards (H2testw showed real capacity ~3.9 GB on a card
 > reporting 64 GB). H0/H1 not started; they do not gate B07.
+>
+> **2026-09-29 — airframe-side progress:** servos bench-tested, motors bench-tested and
+> working, PDB wired, Pixhawk tested and verified. Airframe printed and **partially
+> assembled** (centre section, wing panels and nose fitted; V-tail and tilt-motor mounts to
+> go). Recorded as partial progress on B00, B06, B11, B14 and B16 below; none of those gates
+> closes until its full pass condition is met (most need the assembled airframe, B00).
 
 ---
 
@@ -60,7 +66,7 @@ H0 Inventory & budgets ──► H1 Power bench ──► H2 Companion bench ─
                                         Working prototype: autonomous mission
 ```
 
-Bench tests are numbered **B01–B24**; flight tests **F01–F08**. Numbers are
+Bench tests are numbered **B00–B24**; flight tests **F01–F08**. Numbers are
 stable — reference them from commits and the bring-up log.
 
 ---
@@ -70,6 +76,14 @@ stable — reference them from commits and the bring-up log.
 No solder melts until the arithmetic closes. MTOW 2.5 kg is a ceiling
 (`HORNET_PLATFORM.md` §2); energy is the binding resource.
 
+- [~] **B00 — Airframe mechanical assembly.** Assemble the printed airframe
+      (wing, fuselage, V-tail, tilt-motor mounts) per the Titan Dynamics build
+      manual. Comes first because B01 weighs the airframe as built and B14,
+      B16 and B24 need it assembled.
+      *Pass:* airframe complete; CG mark and control-surface throws (±30°)
+      checked.
+      *Progress (2026-09-29):* printed; centre section with wing panels and
+      nose fitted. V-tail and tilt-motor mounts still to fit.
 - [ ] **B01 — Component inventory + individual masses.** Weigh every component
       on a kitchen/jewellery scale (±1 g): airframe as built, motors, ESCs,
       servos, Pixhawk 6C Mini, GPS/compass, RC receiver, MAVLink radio, Pi 5,
@@ -114,6 +128,11 @@ resets the autopilot (never acceptable — it must have its own supply path).
       *Pass:* Pixhawk unaffected (no reboot, no voltage event in log) when the
       companion rail is shorted off. This is the "companion never in the
       safety-critical loop" boundary, physically enforced.
+      *Progress (2026-09-29):* Pixhawk powered through the PDB. Still to confirm: that
+      the path includes voltage/current sensing (a power module, or the PDB's sense
+      outputs wired to the Pixhawk power port) so PX4 sees battery state. The Pi has its
+      own separate 5 V regulator (2026-09-29) — **not yet tested**; B04/B05 load tests and
+      this isolation test still to run.
 
 ## 4. Phase H2 — Companion computer bench (Pi 5 + AI HAT+ + Camera Module 3)
 
@@ -207,6 +226,11 @@ Props off throughout.
       control-surface throws per manual).
       *Pass:* QGC shows the correct airframe; parameter file exported to
       `config/px4/` and committed.
+      *Progress (2026-09-29):* PX4 flashed from QGroundControl (latest stable, believed
+      v1.16.x — **confirm the exact version**: QGC Analyze Tools → MAVLink Console → `ver all`).
+      It must match the `px4_msgs` branch the stack builds against (`release/1.16`), or the
+      uXRCE-DDS topics may not line up at B17. Tiltrotor VTOL airframe, actuator geometry and
+      the exported parameter file not done yet.
 - [ ] **B12 — Sensor calibration + GPS.** Accel/gyro/compass/level calibration;
       GPS lock outdoors or at a window; compass sane vs. known heading.
       *Pass:* QGC pre-flight sensor checks green; HDOP/satellite count logged.
@@ -216,12 +240,17 @@ Props off throughout.
       transmitter.
       *Pass:* PX4 enters the configured failsafe on transmitter-off; kill
       switch cuts outputs instantly.
-- [ ] **B14 — Servo + ESC bench (props off).** All 6 servos move the correct
+- [~] **B14 — Servo + ESC bench (props off).** All 6 servos move the correct
       surface in the correct direction; tilt servos sweep the full
       hover↔cruise range without binding; ESCs calibrated, motors spin correct
       direction at idle.
       *Pass:* QGC actuator-test tab drives every actuator correctly; tilt
       mechanism smooth through full travel under QGC transition command.
+      *Progress (2026-09-29):* servos bench-tested; motors bench-tested and working.
+      Still open, mostly needing the assembled airframe (B00): each servo moving the
+      correct surface in the correct direction, tilt servos sweeping full
+      hover↔cruise travel without binding, ESC calibration, and motor rotation
+      direction confirmed through the QGC actuator-test tab.
 - [ ] **B15 — MAVLink radio link.** SiK/RFD900 radio pair configured
       (ADR-015); telemetry to the GCS laptop at expected range on the bench
       (attenuated) and RSSI logged.
@@ -239,6 +268,9 @@ The wire that makes it one system. Props off.
       photographed for `docs/img/`.
       *Pass:* continuity + polarity verified with a meter before first
       power-on; single battery powers the whole stack.
+      *Progress (2026-09-29):* PDB (power distribution board) wired. Rest of the loom
+      (PM → Pixhawk, buck → Pi, Pi ↔ Pixhawk serial, camera ribbon) and the
+      continuity/polarity check still to do.
 - [ ] **B17 — uXRCE-DDS over the real link.** `micro-xrce-dds-agent` on the Pi
       against the Pixhawk serial port (PX4 `UXRCE_DDS_CFG` on the chosen
       TELEM port).
@@ -289,6 +321,8 @@ full-mission rehearsal.
       mounting/EMI mistakes early.)
 
 ## 8. Phase H6 — Airframe integration
+
+Starts from the airframe assembled in B00 (H0); this phase installs the stack in it.
 
 - [ ] Mount stack in fuselage: Pi + HAT + cooler ventilation per B09 outcome,
       camera aimed per `geolocate.py` mounting assumptions (record the actual

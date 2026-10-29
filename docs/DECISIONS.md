@@ -497,6 +497,114 @@ Format per entry: context, decision, rationale, status.
 
 ---
 
+### ADR-019 — CMD_START altitudes converted to height above home; orbit radius plumbed to guidance
+
+- **Context:** A code walkthrough (2026-09-28) found three defects on the mission → guidance path.
+  (1) `CMD_START.orbit_radius_m` was stored by `mission_node` and never sent, so every
+  gate-entered TRACK flew guidance's YAML 50 m; a commanded `MODE_ORBIT` also overwrote the radius
+  for all later tracks, and `MODE_ORBIT` with 0 reached the bridge as a 1 m orbit.
+  (2) `transit_alt_amsl_m` / `search_alt_amsl_m` were passed straight through as ENU z (height
+  above home) — correct only when home is at sea level; from a 20 m cliff a 50 m AMSL request flew
+  50 m above home (70 m AMSL), 20 m higher than asked, and a request near 120 m AMSL would have
+  exceeded the CASA 400 ft ceiling above the launch point. (3) `guidance_node` code defaults (60 m lanes, 35 m footprint) disagreed
+  with `guidance.yaml` (25 m, 12 m).
+- **Decision:**
+  1. Reuse the existing `SetGuidanceMode.orbit_radius_m` field on MODE_TRANSIT/MODE_SEARCH as
+     "this mission's tracking radius" (0 = keep current). Guidance keeps three radii: YAML default,
+     mission radius (reset on IDLE), active radius. No new interface field — comment-only `.srv`
+     change.
+  2. Mission converts AMSL once: home AMSL = current AMSL − current height above home, so it is
+     right on the ground or mid-flight. Result must be within `min_alt_above_home_m` (10) and
+     `max_alt_above_home_m` (120, CASA 400 ft) or CMD_START is rejected before arming. 0 still
+     means 30 m above home (ADR-010). CMD_START is also rejected with no global position.
+  3. Code defaults changed to match the YAML.
+  4. *(Added 2026-10-26, from review.)* PX4's local z is relative to the EKF origin, not home, and
+     the bridge passed it through unchanged. With GPS locked at a clifftop car park and launch
+     from the beach 20 m below, "home AMSL" in item 2 was really the origin's, and a request
+     that passed the 120 m check flew ~140 m above the launch point. `autopilot_bridge` now
+     shifts z by home's z both ways (VehicleState out, setpoints in), so the documented
+     contract — `position_enu_m.z` = metres above home — holds and item 2 needs no change.
+     Disarmed, home is the vehicle's own position (PX4 also moves home with a landed vehicle
+     and resets it at arming); armed, it is latched and updated from `/fmu/out/home_position`.
+     That topic is published only on change with no DDS history, so it can't be the only
+     source. A bridge restarted mid-flight has no home and holds `position_valid` false.
+- **Rationale:** Reusing the field avoids an interface change. Converting in one place keeps the
+  "everything below mission is height above home" rule. Rejecting on the ground is safer than
+  clamping in the air.
+- **Verification:** 10 new unit tests, 5 guidance + 5 mission (94/94 pass). SITL 2026-09-28: T06–T11 all pass;
+  a manual CMD_START with `orbit_radius_m: 42` produced SearchState and GuidanceSetpoint orbit
+  radius 42.0, and `search_alt_amsl_m: 35` produced ENU z 34.95 (home ≈ 0.05 m AMSL). Record:
+  `docs/sitl_runs/2026-09-28-adr019.md`. Item 4: SITL 2026-10-26, T06–T12 all pass; new T12
+  moves home 20 m up in flight and checks that z drops to ~10 m and the vehicle climbs back to
+  30 m above the new home. Record: `docs/sitl_runs/2026-10-26-adr019-home.md`.
+- **Status:** Locked (2026-09-28).
+
+---
+
+### ADR-020 — Operator console link: WFB-ng carries the console; 915 MHz stays QGC-only
+
+- **Context:** ADR-015 locked QGC for flight ops plus a thin detection view, transport unspecified.
+  The operator console now in design (`docs/superpowers/specs/2026-10-27-operator-console-design.md`)
+  needs live video with client-side detection boxes, full-res zoom crops, guidance decisions and
+  operator commands. The 915 MHz radio can't carry video (usable payload at the 64 kbps default
+  air rate is unmeasured, estimated at a few kB/s to ~40–50 kbps). The first idea for getting
+  autonomy data onto the radio without breaking the "no MAVLink coded" rule — publish px4_msgs
+  `MavlinkTunnel` over uXRCE-DDS and let PX4 emit TUNNEL — does not work: PX4 main receives TUNNEL
+  into uORB `mavlink_tunnel` (`src/modules/mavlink/mavlink_receiver.cpp`) but has no outgoing
+  TUNNEL stream, and the topic is not in the default `dds_topics.yaml`. It would need a PX4 fork.
+- **Decision:** WFB-ng (5.8 GHz, USB adapter on the Pi) is the console link, carrying H.264 video
+  and a two-way IP tunnel for console frames, zoom crops, commands and acks. The 915 MHz radio stays
+  QGC's safety link and carries nothing new in v1. When WFB-ng drops, the ground bridge falls back
+  to the standard MAVLink QGC already receives (shared via mavlink-router on the laptop) for a
+  position/battery/mode-only view; operator commands are disabled until WFB-ng returns. The
+  console stays link-agnostic: any IP link (LTE, Doodle Labs, Herelink Ethernet) can replace WFB-ng.
+- **Rationale:** No companion code touches the radio, so the CLAUDE.md transport rule holds
+  unchanged and the companion stays out of QGC's safety path. WFB-ng is cheap, open-source, has a
+  PX4 docs page, and plugs into the Pi over USB. A PX4 fork for one stream isn't worth maintaining.
+- **Consequences:** (a) Mass, power and ground-antenna hardware for WFB-ng must be added to the
+  (still missing) platform budget. (b) Pi 5 has no hardware H.264 encoder: software encode, capped
+  at 640x360 @ 15 fps until CPU/power are measured. (c) In the DEGRADED state the operator can't
+  see detections or the gate score, and can't command. (d) 5.8 GHz TX power + antenna gain must
+  be checked against the current ACMA LIPD class licence (remade around Oct 2025). (e) WFB-ng
+  range and latency at 1–3 km over water are unmeasured; driver notes say the ACK timeout needs
+  checking beyond ~3 km.
+- **Revisit if:** field tests show WFB-ng dropping often enough that a blind DEGRADED state matters.
+  Then: a second Pi↔Pixhawk MAVLink UART with PX4 `MAV_n_FORWARD` to carry a small autonomy summary
+  and commands over 915 — that amends the CLAUDE.md rule and needs its own ADR. Never route the
+  915 MHz radio through the Pi.
+- **Status:** Proposed (2026-10-27). Becomes locked after a bench WFB-ng pair brings up the IP
+  tunnel and video between the Pi and the laptop.
+
+---
+
+### ADR-021 — Detection map update uses each detection's own position uncertainty
+
+- **Context:** Perception propagates a horizontal 1-sigma (`Detection.position_std_m`) for every
+  geolocated detection (`geolocate.py`, ~2.3 m at 30 m AGL), but `guidance_node` ignored it and
+  applied every positive-detection Gaussian with a fixed `detection_sigma_m` = 25 m. A precise
+  detection and a vague one moved the belief map identically, and the 25 m spread smeared a
+  confirmed sighting across ~80 cells. Found while writing the system map (`docs/system_map/`),
+  2026-10-29.
+- **Decision:** For a geolocated detection, sigma = max(`position_std_m`,
+  `detection_sigma_min_m`). New parameter `detection_sigma_min_m` = 5.0 m. A detection that is not
+  geolocated (placed at the vehicle position), or carries a non-positive/NaN std, keeps the
+  `detection_sigma_m` = 25 m fallback. Pure helper `detection_sigma_m()` in `guidance_node.py`,
+  unit-tested.
+- **Rationale:** The interface already carries the uncertainty; using it is the point of
+  propagating it. The floor exists because perception's figure models AGL error only — it omits
+  GPS (~2–3 m), attitude and camera/attitude timing error — and a sigma below the 5 m cell size
+  adds no information. The floor is a calibration knob: set it from measured geolocation scatter
+  once real flight logs exist.
+- **Consequences:** (a) Geolocated detections now concentrate belief tightly (5 m instead of 25 m),
+  so `bayesian_greedy` / `persistent_patrol` steer harder toward a confirmed sighting. (b) The
+  SEARCH → TRACK transition is unaffected — it is driven by the confidence gate (ADR-016), not the
+  map. (c) T10 injects `geo_valid=False` (fallback path); T11's mock detector produces geolocated
+  detections (new path).
+- **Status:** Implemented 2026-10-29. 56/56 guidance unit tests pass; SITL T10 + T11 pass
+  (`docs/sitl_runs/2026-10-29-adr021.md`).
+
+---
+
 ## Deferred Watch Items
 
 Short-lived simplifications accepted deliberately. Each entry names the trigger for revisiting.
